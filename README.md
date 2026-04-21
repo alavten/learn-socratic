@@ -87,3 +87,21 @@ python3 -m pytest -q
 ```bash
 python3 -m pytest -q tests/integration/test_error_paths.py
 ```
+
+- 使用 `tests/assert/SoftwareEngineering` 资料执行真实全流程验证：
+
+```bash
+python3 -m pytest -q tests/integration/test_software_engineering_real_flow.py
+```
+
+- 使用 `tests/assert/SoftwareEngineering` 资料执行“覆盖率达标 + 方法论约束”验证：
+
+```bash
+python3 -m pytest -q tests/integration/test_software_engineering_coverage_guarantee.py
+```
+
+- 按 `SKILL.md` 路由与模式契约执行真实流程验证（非仅 API 脚本）：
+
+```bash
+python3 -m pytest -q tests/integration/test_skill_md_runtime_execution.py
+```
