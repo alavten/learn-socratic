@@ -200,22 +200,28 @@ sequenceDiagram
 ### 4.2 CLI 命令模板
 
 ```bash
-<entry-command> run \
+<entry-command> fetch-mode-context \
   --mode <mode-a|mode-b|mode-c> \
+  --context-id <id>
+
+<entry-command> commit-interaction-record \
   --context-id <id> \
-  --payload-file <path>
+  --mode <mode-a|mode-b|mode-c> \
+  --result-file <path>
 ```
 
 ### 4.3 AI Agent 调 CLI 的映射模板
 
 | AI Agent 触发的 CLI 命令 | L3 内部接口 |
 | --- | --- |
-| `run --mode <mode-a>` | `get_<mode-a>_prompt(...)` |
-| `run --mode <mode-b>` | `get_<mode-b>_prompt(...)` |
-| `run --mode <mode-c>` | `get_<mode-c>_prompt(...)` |
-| `record append ...` | `append_<record>(...)` |
-| `apis list` | `list_apis()` |
-| `apis spec --name ...` | `get_api_spec(api_name)` |
+| `fetch-mode-context --mode <mode-a>` | `get_<mode-a>_context(...)` |
+| `fetch-mode-context --mode <mode-b>` | `get_<mode-b>_context(...)` |
+| `fetch-mode-context --mode <mode-c>` | `get_<mode-c>_context(...)` |
+| `commit-interaction-record ...` | `append_<record>(...)` |
+| `describe-capabilities` | `list_apis()` |
+| `describe-capability --name ...` | `get_api_spec(api_name)` |
+
+> 模板说明：以上命令为通用占位示例，不绑定任何具体项目；落地时请在项目文档中补充本项目的实际入口命令。
 
 ---
 
