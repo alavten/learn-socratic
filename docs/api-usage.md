@@ -2,12 +2,39 @@
 
 本文档面向调用方，说明 `orchestration_app_service` 的可用 API、典型入参和响应示例。
 
+## 双视图入口
+
+### User Journey View（按目标选择）
+
+1. 资料入图：`ingest-knowledge-graph`
+2. 建立学习计划：`create-learning-plan`
+3. 学习讲解：`get-learning-prompt`
+4. 测验评估：`get-quiz-prompt`
+5. 复习强化：`get-review-prompt`
+6. 结果回写：`append-learning-record`
+
+### System Operator View（按运维操作）
+
+- API 发现：`list-apis`、`get-api-spec`
+- 图谱运维：`list-knowledge-graphs`、`get-knowledge-graph`、`ingest-knowledge-graph`
+- 学习运维：`list-learning-plans`、`create-learning-plan`、`extend-learning-plan-topics`
+- 交互运行：`get-learning-prompt` / `get-quiz-prompt` / `get-review-prompt`
+- 记录提交：`append-learning-record`
+
+补充说明：
+- 学习路径导航（用户视角）在 `README.md`。
+- 本文档作为系统调用细节的单一维护源。
+
 ## 使用方式
 
 ```python
 from scripts.app import create_app
 
 service = create_app()
+```
+
+```bash
+python scripts/cli.py list-apis
 ```
 
 ---

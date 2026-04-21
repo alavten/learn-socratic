@@ -31,6 +31,35 @@
    - create plan via `create_learning_plan(graph_id, topic_id?)`
    - continue with `learn` mode prompt retrieval
 
+## Turn Contract
+
+- One ingestion attempt per turn.
+- Return one clear status (`success` or `needs_fix`) plus one next action.
+- Keep feedback concise and list at most top 5 validation errors at once.
+
+## AI Execution Directives
+
+- Treat ingest as a validation-first mode, not a teaching mode.
+- Validate and report before proposing downstream learning actions.
+- If payload fails, return field-level fixes and ask for corrected payload.
+- If payload succeeds, summarize version/change delta and recommend the next mode.
+- Do not invent missing payload fields; request explicit correction inputs.
+
+## Escalation Rule
+
+- If validation passes: escalate to plan bootstrap suggestion (`create_learning_plan`).
+- If validation fails: de-escalate to payload repair guidance with concrete field-level fixes.
+
+## Mode Exit Rule
+
+- Exit to `learn` only after `validation_summary.ok = true`.
+- Stay in `ingest` when payload parse/validation is still failing.
+
+## Evidence Rule
+
+- When rejecting relation data, include validation evidence from `validation_summary.errors`.
+- Do not fabricate source evidence; echo payload-level diagnostics only.
+
 ## Steps
 
 1. Load JSON payload from `payload_file`.

@@ -29,6 +29,49 @@
 5. Persist review result:
    - `append_learning_record(plan_id, mode="review", record_payload)`
 
+## Turn Contract
+
+- Process one due-item focus per turn.
+- Output recall result + correction + next review action.
+- Always return `summary` and `next_step`.
+
+## AI Execution Directives
+
+- Prioritize review queue in this order:
+  1. overdue items
+  2. high forgetting risk
+  3. weak-point recent errors
+  4. upcoming due items
+- Use short retrieval prompts first; only give full explanation after learner attempt.
+- Keep one concept per turn; do not blend multiple due items in one question.
+
+## Escalation Rule
+
+- If recall is consistently correct, widen interval suggestion and move to next due item.
+- If recall is incorrect, narrow scope and re-test same concept once with simpler prompt.
+
+- Interval suggestion policy:
+  - high confidence + correct -> widen
+  - uncertain + correct -> keep
+  - incorrect -> shorten
+
+## Mode Exit Rule
+
+- Exit to `learn` when the issue is conceptual gap, not memory decay.
+- Exit to `quiz` when user requests challenge-level verification.
+
+## Evidence Rule
+
+- Prioritize due-item evidence (`priority_reasons`, risk summary) in explanations.
+- Keep correction anchored to context materials; do not overgeneralize outside scope.
+
+## Spacing Policy Hint
+
+- Convert `forgetting_risk` to review urgency:
+  - `>= 0.7`: immediate review
+  - `0.4 - 0.69`: same session or next short window
+  - `< 0.4`: normal cadence
+
 ## Steps
 
 1. Resolve scope and call `get_review_prompt(plan_id, topic_id?)`.

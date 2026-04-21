@@ -29,6 +29,44 @@
 5. Persist outcome:
    - `append_learning_record(plan_id, mode="learn", record_payload)`
 
+## Turn Contract
+
+- Ask at most one core learning check per turn.
+- Keep explanation focused to one concept cluster each turn.
+- Always return `summary` and one `next_step`.
+
+## AI Execution Directives
+
+- Default to Feynman-style teaching loop:
+  1. explain one concept briefly,
+  2. ask learner to restate in own words,
+  3. diagnose gap,
+  4. re-explain with a simpler analogy or example.
+- Keep one concept focus per turn; do not branch into multiple new concepts.
+- If learner gives a correct restatement twice, recommend moving to `quiz`.
+
+## Escalation Rule
+
+- If learner answers correctly twice on same concept cluster, suggest moving to `quiz`.
+- If learner is blocked, de-escalate with simpler framing and one clarifying example.
+
+## Mode Exit Rule
+
+- Exit to `quiz` when user asks for assessment or demonstrates stable understanding.
+- Exit to `review` when context signals overdue or weak-point reinforcement.
+
+## Evidence Rule
+
+- When correcting misunderstandings, cite concept/relation/evidence summaries from prompt context.
+- If context is insufficient, explicitly state uncertainty and ask to narrow scope.
+
+## Metacognitive Check
+
+- Every 3-5 turns, ask one short calibration question:
+  - expected confidence (0-100)
+  - what was hard
+  - what to review next
+
 ## Steps
 
 1. Resolve scope and call `get_learning_prompt(plan_id, topic_id?)`.

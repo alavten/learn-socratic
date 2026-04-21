@@ -3,7 +3,7 @@
 ## Architecture Design Coverage
 
 - [x] L1 entry routing implemented in `SKILL.md`.
-- [x] L2 mode contracts implemented in `modes/shared.md`, `modes/learn.md`, `modes/quiz.md`, `modes/review.md`.
+- [x] L2 mode contracts implemented in `modes/shared.md`, `modes/ingest.md`, `modes/learn.md`, `modes/quiz.md`, `modes/review.md`.
 - [x] L3 orchestration service implemented in `scripts/orchestration/orchestration_app_service.py`.
 - [x] Prompt text packaging implemented in `scripts/orchestration/prompt_templates.py`.
 - [x] L4 knowledge graph module implemented in `scripts/knowledge_graph/`.
@@ -20,7 +20,7 @@
 - [x] Version fields (`dr`, `drtime`) and current-record uniqueness implemented.
 - [x] Relation evidence mandatory check enforced at ingest validation.
 - [x] `LearnerConceptState` uniqueness and target constraints implemented.
-- [x] `createdAt/updatedAt` metadata maintained on learning-side entities.
+- [x] `created_at/updated_at` metadata maintained on learning-side runtime fields.
 
 ## API and Flow Coverage
 
@@ -35,3 +35,10 @@
 - [x] Unit tests added for knowledge graph, learning, orchestration.
 - [x] Integration test added for full loop execution.
 - [x] DB path override enabled via `DOC_SOCRATIC_DB_PATH` for isolated tests.
+
+## Terminology Consistency
+
+- [x] Runtime/API/mode documents use `snake_case` field names (`graph_id`, `plan_id`, `record_type`, etc.).
+- [x] `docs/data-model-design.md` keeps canonical model naming as designed (including existing camelCase attributes).
+- [x] Router and capability descriptions consistently include all four modes: `ingest / learn / quiz / review`.
+- [x] Terminology guard test exists: `tests/docs/test_docs_terminology.py`.

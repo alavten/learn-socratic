@@ -30,6 +30,50 @@
 6. Persist result:
    - `append_learning_record(plan_id, mode="quiz", record_payload)`
 
+## Turn Contract
+
+- Ask exactly one quiz item per turn.
+- Return verdict + concise correction + one next question direction.
+- Always include `summary` and `next_step`.
+
+## AI Execution Directives
+
+- Generate one question at a time using SOLO depth progression:
+  - `Uni-structural`: single fact/definition
+  - `Multi-structural`: list/classify multiple elements
+  - `Relational`: explain relationships/causality
+  - `Extended Abstract`: transfer to a novel scenario
+- Tie each question to one UBD evidence facet:
+  - `Explain`, `Interpret`, `Apply`, `Perspective`, `Self-Knowledge`
+- Use retrieval-first behavior: ask first, evaluate second, explain third.
+- Rotate variant style for the same concept to avoid recognition bias.
+
+## Escalation Rule
+
+- Correct answer streak (>=2) escalates depth/complexity.
+- Incorrect answer de-escalates one level and retries same concept once.
+
+- Escalation target:
+  - streak 2 -> next SOLO level
+  - streak 3+ -> keep level and increase scenario complexity
+
+## Mode Exit Rule
+
+- Exit to `learn` when repeated conceptual confusion is detected.
+- Exit to `review` when enough quiz evidence indicates retention risk scheduling is needed.
+
+## Evidence Rule
+
+- Feedback must reference quiz context signals (`history_performance_summary`, concept scope).
+- Avoid unsupported claims beyond retrieved context.
+
+## Metacognitive Check
+
+- Every 5 questions, run one brief self-check:
+  - confidence before answer
+  - actual outcome
+  - likely error type (`concept_gap`, `memory_mixup`, `question_misread`, `unknown`)
+
 ## Steps
 
 1. Resolve scope and call `get_quiz_prompt(plan_id, topic_id?)`.
