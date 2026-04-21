@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+ALLOWED_RELATION_TYPES = {
+    "prerequisite_of",
+    "part_of",
+    "contrast_with",
+    "applied_in",
+    "related_to",
+}
+
 
 def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
@@ -29,6 +37,7 @@ def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
     for idx, relation in enumerate(relations):
         from_id = relation.get("from_concept_id")
         to_id = relation.get("to_concept_id")
+        relation_type = relation.get("relation_type", "related_to")
         if not relation.get("concept_relation_id"):
             errors.append(f"relation[{idx}] missing concept_relation_id")
         if from_id not in concept_ids:
@@ -37,6 +46,11 @@ def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
             errors.append(f"relation[{idx}] to_concept_id not found in payload concepts")
         if from_id == to_id:
             errors.append(f"relation[{idx}] self-loop is not allowed")
+        if relation_type not in ALLOWED_RELATION_TYPES:
+            allowed = ", ".join(sorted(ALLOWED_RELATION_TYPES))
+            errors.append(
+                f"relation[{idx}] invalid relation_type '{relation_type}', allowed: [{allowed}]"
+            )
 
     relation_evidence_map: dict[str, int] = {}
     for idx, re_item in enumerate(relation_evidences):

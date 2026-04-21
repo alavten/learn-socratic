@@ -67,6 +67,16 @@ def test_validate_relation_missing_references():
     assert "relation[0] to_concept_id not found in payload concepts" in result["errors"]
 
 
+def test_validate_relation_type_must_be_allowed_value():
+    payload = sample_graph_payload()
+    payload["relations"][0]["relation_type"] = "constrains"
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "relation[0] invalid relation_type 'constrains'" in " ".join(result["errors"])
+
+
 def test_validate_relation_evidence_missing_relation():
     payload = sample_graph_payload()
     payload["relation_evidences"][0]["concept_relation_id"] = "r-missing"

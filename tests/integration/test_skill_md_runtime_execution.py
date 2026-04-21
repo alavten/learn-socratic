@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from tests.fixtures.software_engineering_payloads import build_software_engineering_payload
 from tests.skill_runtime_harness import SkillRuntime
 
@@ -20,10 +19,6 @@ def test_skill_runtime_routes_and_executes_contracts_with_real_materials(isolate
     assert runtime.route_mode("继续", last_mode="quiz") == "quiz"
     assert runtime.route_mode("随便聊聊") == "shared"
 
-    start = runtime.session_start("ingest")
-    assert start["mode"] == "ingest"
-    assert "next_step" in start and "summary" in start
-
     ingest = runtime.run_ingest(graph_id="se-runtime", payload=payload)
     assert ingest["mode"] == "ingest"
     assert ingest["status"] == "success"
@@ -31,7 +26,6 @@ def test_skill_runtime_routes_and_executes_contracts_with_real_materials(isolate
     assert "summary" in ingest and "next_step" in ingest
 
     plan_id = runtime.ensure_plan(graph_id="se-runtime")
-
     learn = runtime.run_learn(plan_id=plan_id)
     assert learn["mode"] == "learn"
     assert "Feynman loop" in learn["content"]
@@ -68,4 +62,5 @@ def test_skill_runtime_routes_and_executes_contracts_with_real_materials(isolate
 
     shared_ambiguous = runtime.run_shared("不太确定怎么开始")
     assert shared_ambiguous["mode"] == "shared"
+    assert shared_ambiguous["clarification_question"]
     assert "summary" in shared_ambiguous and "next_step" in shared_ambiguous

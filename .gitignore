@@ -64,3 +64,5 @@ temp/
 *.log
 *.pid
 .cache/
+.cursor/
+docs/acceptance/

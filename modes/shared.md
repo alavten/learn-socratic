@@ -44,7 +44,9 @@
 
 ## Output
 
-- `mode`: resolved mode or `shared`
+- `mode`: keep as `shared` for clarification turn, then hand off to resolved mode
+- `clarification_question`: one concise question used for disambiguation
+- `resolved_mode`: `ingest`/`learn`/`quiz`/`review` or `null` when still unclear
 - `summary`: concise clarification result
 - `next_step`: recommended mode transition
 

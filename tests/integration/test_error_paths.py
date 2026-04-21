@@ -18,6 +18,17 @@ def test_ingest_fails_when_relation_has_no_evidence(isolated_db):
     assert "has no evidence link" in " ".join(result["validation_summary"]["errors"])
 
 
+def test_ingest_fails_when_relation_type_is_not_supported(isolated_db):
+    service = OrchestrationAppService()
+    payload = sample_graph_payload()
+    payload["relations"][0]["relation_type"] = "constrains"
+
+    result = service.ingest_knowledge_graph("g1", payload)
+
+    assert result["validation_summary"]["ok"] is False
+    assert "invalid relation_type 'constrains'" in " ".join(result["validation_summary"]["errors"])
+
+
 def test_get_learning_prompt_with_unknown_plan_returns_error_context(isolated_db):
     service = OrchestrationAppService()
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from scripts.foundation.logger import get_logger, log_event
+from scripts.foundation.storage import run_migrations
 from scripts.knowledge_graph import api as kg_api
 from scripts.learning import api as learning_api
 from scripts.orchestration.prompt_templates import build_prompt
@@ -82,6 +83,10 @@ def _validate_required(api_name: str, payload: dict[str, Any]) -> None:
 
 
 class OrchestrationAppService:
+    def __init__(self) -> None:
+        # Ensure schema exists even when callers bypass create_app().
+        run_migrations()
+
     def list_apis(self) -> list[dict[str, Any]]:
         return [
             {

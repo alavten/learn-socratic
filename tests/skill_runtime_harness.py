@@ -24,13 +24,22 @@ class SkillRuntime:
 
     def route_mode(self, user_input: str, last_mode: str | None = None) -> str:
         text = user_input.strip().lower()
-        if any(k in text for k in ["导入", "建图", "更新图谱", "ingest", "import"]):
+
+        ingest_hits = any(k in text for k in ["导入", "建图", "更新图谱", "更新知识", "ingest", "import"])
+        learn_hits = any(k in text for k in ["学习", "讲解", "理解", "学", "learn", "explain"])
+        quiz_hits = any(k in text for k in ["考我", "考考我", "测试", "测验", "出题", "quiz", "test"])
+        review_hits = any(k in text for k in ["复习", "回顾", "到期", "遗忘", "最容易忘", "review"])
+
+        matched = [m for m, hit in [("ingest", ingest_hits), ("learn", learn_hits), ("quiz", quiz_hits), ("review", review_hits)] if hit]
+        if len(matched) > 1:
+            return "shared"
+        if ingest_hits:
             return "ingest"
-        if any(k in text for k in ["学习", "讲解", "理解", "learn", "explain"]):
+        if learn_hits:
             return "learn"
-        if any(k in text for k in ["考我", "测试", "出题", "quiz", "test"]):
+        if quiz_hits:
             return "quiz"
-        if any(k in text for k in ["复习", "回顾", "到期", "review"]):
+        if review_hits:
             return "review"
         if any(k in text for k in ["继续", "下一个", "continue", "next"]) and last_mode:
             return last_mode
@@ -100,11 +109,15 @@ class SkillRuntime:
         if resolved == "shared":
             return {
                 "mode": "shared",
+                "clarification_question": "你想继续哪种模式：ingest、learn、quiz 还是 review？",
+                "resolved_mode": None,
                 "summary": "intent unclear, one clarification needed",
                 "next_step": "ask_user_to_choose_ingest_learn_quiz_review",
             }
         return {
-            "mode": resolved,
+            "mode": "shared",
+            "clarification_question": "已识别你的意图，是否确认切换？",
+            "resolved_mode": resolved,
             "summary": f"intent resolved to {resolved}",
             "next_step": f"route_to_{resolved}",
         }
