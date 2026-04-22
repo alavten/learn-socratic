@@ -1,6 +1,6 @@
 ---
-name: doc-socratic-learning-optimized
-description: 基于用户文档的苏格拉底式学习与建图（Ingest / Learn / Quiz / Review）；SOLO 层级递进追问与 UBD 对齐；Python 脚本支持知识图谱入库、学习日志、掌握度、间隔复习调度与按变式出题；测验与复习结果可持久化到学习记录。
+name: Learn-socratic
+description: Socratic learning from your documents with graph ingest and a learn / quiz / review loop; SOLO-style depth progression and UBD-aligned evidence of understanding; companion tooling for validated graph ingest, learning logs, mastery estimates, spaced scheduling, and variant quizzing; quiz and review outcomes can be persisted to learning records.
 args:
   type: string
   completions:
@@ -52,15 +52,15 @@ The following contract applies to every session regardless of mode.
 
 ## Intent Matrix
 
-Natural language intent should be mapped before mode execution.
+Before each mode, map natural language intent to a target mode.
 
-| User intent hint | Target mode |
-| --- | --- |
-| 导入资料 / 建图 / 更新知识 | `ingest` |
-| 讲解 / 学习 / 理解 | `learn` |
-| 测试 / 考考我 / 出题 | `quiz` |
-| 复习 / 回顾 / 到期项 | `review` |
-| 意图冲突或缺少上下文 | `shared` |
+| User intent hint                                                      | Target mode |
+| --------------------------------------------------------------------- | ----------- |
+| 导入资料 / 建图 / 更新知识 · import materials / build or update graph | `ingest`    |
+| 讲解 / 学习 / 理解 · explain / learn / understand                     | `learn`     |
+| 测试 / 考考我 / 出题 · test me / quiz / ask questions                 | `quiz`      |
+| 复习 / 回顾 / 到期项 · review / recap / due items                     | `review`    |
+| 意图冲突或缺少上下文 · conflicting intent or missing context          | `shared`    |
 
 ## Routing Rules
 
