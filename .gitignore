@@ -66,3 +66,4 @@ temp/
 .cache/
 .cursor/
 docs/acceptance/
+payloads

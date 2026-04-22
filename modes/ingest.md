@@ -8,7 +8,7 @@
 ## Inputs
 
 - `graph_id` (required)
-- `payload_file` (required, JSON)
+- `payload_file` (required, JSON, must be `structured_payload` object only)
 - Optional `session_context`
 
 ## Command Invocation
@@ -80,6 +80,7 @@
 ## Retry / Fallback
 
 - If payload file cannot be parsed, stop and return parse error.
+- If payload file is wrapped as `{ "graph_id": "...", "structured_payload": {...} }`, reject and ask caller to pass only inner `structured_payload`.
 - If validation fails, do not write learning records; request payload correction.
 - If graph exists with conflict, retry with corrected payload and same `graph_id`.
 

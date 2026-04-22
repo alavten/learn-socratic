@@ -97,6 +97,48 @@ def test_validate_relation_evidence_missing_evidence():
     assert "relation_evidence[0] evidence not found in payload evidences" in result["errors"]
 
 
+def test_validate_evidence_requires_quote_text():
+    payload = sample_graph_payload()
+    payload["evidences"][0].pop("quote_text")
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "evidence[0] missing quote_text" in result["errors"]
+
+
+def test_validate_topic_concept_requires_topic_concept_id():
+    payload = sample_graph_payload()
+    payload["topic_concepts"][0].pop("topic_concept_id")
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "topic_concept[0] missing topic_concept_id" in result["errors"]
+
+
+def test_validate_relation_evidence_requires_relation_evidence_id():
+    payload = sample_graph_payload()
+    payload["relation_evidences"][0].pop("relation_evidence_id")
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "relation_evidence[0] missing relation_evidence_id" in result["errors"]
+
+
+def test_validate_rejects_api_envelope_wrapper():
+    payload = {
+        "graph_id": "g1",
+        "structured_payload": sample_graph_payload(),
+    }
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "payload appears wrapped with graph_id/structured_payload envelope" in " ".join(result["errors"])
+
+
 def test_validate_warns_when_topics_missing():
     payload = sample_graph_payload()
     payload["topics"] = []

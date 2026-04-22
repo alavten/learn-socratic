@@ -266,6 +266,20 @@ def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, 
                     ),
                 )
 
+    except KeyError as exc:
+        field_error = f"payload missing required field during write: {exc.args[0]}"
+        return {
+            "graph_id": graph_id,
+            "version": None,
+            "change_summary": {},
+            "validation_summary": {
+                "ok": False,
+                "errors": [field_error],
+                "warnings": validation.get("warnings", []),
+                "stats": validation.get("stats", {}),
+            },
+            "detail": {"failed_items": [field_error]},
+        }
     except sqlite3.IntegrityError as exc:
         # Keep ingest recoverable for user-driven payload repair loops.
         constraint_error = f"database constraint failed: {exc}"

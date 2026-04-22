@@ -29,6 +29,17 @@ def test_ingest_fails_when_relation_type_is_not_supported(isolated_db):
     assert "invalid relation_type 'constrains'" in " ".join(result["validation_summary"]["errors"])
 
 
+def test_ingest_fails_with_actionable_error_when_evidence_quote_missing(isolated_db):
+    service = OrchestrationAppService()
+    payload = sample_graph_payload()
+    payload["evidences"][0].pop("quote_text")
+
+    result = service.ingest_knowledge_graph("g1", payload)
+
+    assert result["validation_summary"]["ok"] is False
+    assert "evidence[0] missing quote_text" in " ".join(result["validation_summary"]["errors"])
+
+
 def test_get_learning_prompt_with_unknown_plan_returns_error_context(isolated_db):
     service = OrchestrationAppService()
 

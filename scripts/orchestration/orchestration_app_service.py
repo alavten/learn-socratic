@@ -30,7 +30,156 @@ API_SPECS: dict[str, dict[str, Any]] = {
         "stability": "stable",
     },
     "ingest_knowledge_graph": {
-        "input_schema": {"type": "object", "required": ["graph_id", "structured_payload"]},
+        "input_schema": {
+            "type": "object",
+            "required": ["graph_id", "structured_payload"],
+            "properties": {
+                "graph_id": {
+                    "type": "string",
+                    "description": "Knowledge graph identifier",
+                    "examples": ["g-software-engineering"],
+                },
+                "structured_payload": {
+                    "type": "object",
+                    "required": ["graph", "concepts", "relations", "evidences", "relation_evidences"],
+                    "properties": {
+                        "graph": {
+                            "type": "object",
+                            "required": ["graph_type", "graph_name", "schema_version", "release_tag"],
+                            "examples": [
+                                {
+                                    "graph_type": "domain",
+                                    "graph_name": "Software Engineering Exam Knowledge",
+                                    "schema_version": "1.0.0",
+                                    "release_tag": "se-r1",
+                                }
+                            ],
+                        },
+                        "concepts": {
+                            "type": "array",
+                            "description": "Concept entries to upsert into graph",
+                            "items": {
+                                "type": "object",
+                                "required": ["concept_id", "canonical_name", "definition"],
+                                "properties": {
+                                    "concept_id": {
+                                        "type": "string",
+                                        "description": "Use a namespaced id to avoid collisions across books",
+                                        "examples": [
+                                            "sebook-ch04-data-communication-basics",
+                                            "sebook-ch07-requirement-design-test-tradeoff",
+                                        ],
+                                    },
+                                    "canonical_name": {
+                                        "type": "string",
+                                        "examples": ["数据通信基础"],
+                                    },
+                                    "definition": {
+                                        "type": "string",
+                                        "examples": ["奈奎斯特定理与香农定理等通信基础。"],
+                                    },
+                                    "concept_type": {
+                                        "type": "string",
+                                        "examples": ["exam_knowledge"],
+                                    },
+                                    "difficulty_level": {
+                                        "type": "string",
+                                        "examples": ["medium"],
+                                    },
+                                },
+                            },
+                        },
+                        "relations": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": [
+                                    "concept_relation_id",
+                                    "from_concept_id",
+                                    "to_concept_id",
+                                    "relation_type",
+                                ],
+                                "properties": {
+                                    "concept_relation_id": {"type": "string"},
+                                    "from_concept_id": {"type": "string"},
+                                    "to_concept_id": {"type": "string"},
+                                    "relation_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "prerequisite_of",
+                                            "part_of",
+                                            "contrast_with",
+                                            "applied_in",
+                                            "related_to",
+                                        ],
+                                    },
+                                },
+                            },
+                        },
+                        "evidences": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["evidence_id", "quote_text"],
+                                "properties": {
+                                    "evidence_id": {"type": "string"},
+                                    "source_type": {"type": "string"},
+                                    "source_title": {"type": "string"},
+                                    "source_uri": {"type": "string"},
+                                    "locator": {"type": "string"},
+                                    "quote_text": {"type": "string"},
+                                },
+                            },
+                        },
+                        "relation_evidences": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": [
+                                    "relation_evidence_id",
+                                    "concept_relation_id",
+                                    "evidence_id",
+                                ],
+                                "properties": {
+                                    "relation_evidence_id": {"type": "string"},
+                                    "concept_relation_id": {"type": "string"},
+                                    "evidence_id": {"type": "string"},
+                                    "support_score": {"type": "number"},
+                                    "evidence_role": {"type": "string"},
+                                },
+                            },
+                        },
+                        "topics": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["topic_id", "topic_name"],
+                                "properties": {
+                                    "topic_id": {"type": "string"},
+                                    "topic_name": {"type": "string"},
+                                    "topic_type": {"type": "string"},
+                                    "sort_order": {"type": "integer"},
+                                },
+                            },
+                        },
+                        "topic_concepts": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["topic_concept_id", "topic_id", "concept_id"],
+                                "properties": {
+                                    "topic_concept_id": {"type": "string"},
+                                    "topic_id": {"type": "string"},
+                                    "concept_id": {"type": "string"},
+                                    "role": {"type": "string"},
+                                    "rank": {"type": "integer"},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
         "summary": "Ingest structured graph payload",
         "tags": ["kg", "write"],
         "stability": "beta",

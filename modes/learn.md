@@ -26,8 +26,10 @@
 3. Fetch learn prompt context:
    - `get_learning_prompt(plan_id, topic_id?)`
 4. Run Socratic teaching interaction with returned `prompt_text`.
-5. Persist outcome:
+5. Persist learning record for this turn:
    - `append_learning_record(plan_id, mode="learn", record_payload)`
+   - minimum: `record_payload={"concept_id": "...", "result": "ok|partial|blocked"}`
+   - recommended: include `score`, `difficulty_bucket`, and `latency_ms` for later quiz/review scheduling
 
 ## Turn Contract
 

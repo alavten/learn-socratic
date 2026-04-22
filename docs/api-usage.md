@@ -160,6 +160,10 @@ python scripts/cli.py list-apis
 
 ### `ingest_knowledge_graph(graph_id, structured_payload)`
 
+CLI `--payload-file` 约定：
+- 仅传 `structured_payload` 对象本体（`graph/concepts/relations/...`）。
+- 不要传 API 包装体 `{ "graph_id": "...", "structured_payload": {...} }`，`graph_id` 通过 CLI 参数单独提供。
+
 **请求示例**
 
 ```json
@@ -235,6 +239,17 @@ python scripts/cli.py list-apis
   }
 }
 ```
+
+**常见字段映射错误（需避免）**
+
+- `relations` 必填：`concept_relation_id / from_concept_id / to_concept_id / relation_type`
+  - 错误示例：`relation_id / from / to / type`
+- `evidences` 必填：`evidence_id / quote_text`
+  - 错误示例：`concept_id / evidence_text`
+- `relation_evidences` 必填：`relation_evidence_id / concept_relation_id / evidence_id`
+- `topic_concepts` 必填：`topic_concept_id / topic_id / concept_id`
+- `concepts` 必填：`concept_id / canonical_name / definition`
+  - 错误示例：`name` 代替 `canonical_name`
 
 ### `get_concepts(graph_id, concept_scope, detail='brief', concept_limit=20, cursor=None)`
 
