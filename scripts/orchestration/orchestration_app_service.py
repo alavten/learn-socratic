@@ -7,6 +7,7 @@ from typing import Any, Callable
 from scripts.foundation.logger import get_logger, log_event
 from scripts.foundation.storage import run_migrations
 from scripts.knowledge_graph import api as kg_api
+from scripts.knowledge_graph.store import collect_topic_ids_with_descendants
 from scripts.learning import api as learning_api
 from scripts.orchestration.prompt_templates import build_prompt
 
@@ -34,6 +35,22 @@ API_SPECS: dict[str, dict[str, Any]] = {
             "type": "object",
             "required": ["graph_id", "structured_payload"],
             "properties": {
+                "sync_mode": {
+                    "type": "string",
+                    "enum": ["upsert_only", "upsert_and_prune"],
+                    "description": "upsert_and_prune removes concepts/relations missing from payload within prune_scope",
+                },
+                "prune_scope": {
+                    "type": "object",
+                    "properties": {
+                        "topic_ids": {"type": "array", "items": {"type": "string"}},
+                        "concept_id_prefix": {"type": "string"},
+                    },
+                },
+                "force_delete": {
+                    "type": "boolean",
+                    "description": "When pruning, drop learning refs blocking removal",
+                },
                 "graph_id": {
                     "type": "string",
                     "description": "Knowledge graph identifier",
@@ -184,6 +201,27 @@ API_SPECS: dict[str, dict[str, Any]] = {
         "tags": ["kg", "write"],
         "stability": "beta",
     },
+    "remove_knowledge_graph_entities": {
+        "input_schema": {
+            "type": "object",
+            "required": ["graph_id", "remove_payload"],
+            "properties": {
+                "graph_id": {"type": "string"},
+                "remove_payload": {
+                    "type": "object",
+                    "properties": {
+                        "concept_ids": {"type": "array", "items": {"type": "string"}},
+                        "relation_ids": {"type": "array", "items": {"type": "string"}},
+                        "topic_ids": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+                "force_delete": {"type": "boolean", "description": "If true, drop learning refs then hard-delete graph rows"},
+            },
+        },
+        "summary": "Remove graph entities after learning dependency check",
+        "tags": ["kg", "write", "learning"],
+        "stability": "beta",
+    },
     "list_learning_plans": {"input_schema": {"type": "object"}, "summary": "List plans", "tags": ["learning"], "stability": "stable"},
     "create_learning_plan": {
         "input_schema": {"type": "object", "required": ["graph_id"]},
@@ -210,7 +248,16 @@ API_SPECS: dict[str, dict[str, Any]] = {
         "stability": "stable",
     },
     "get_review_prompt": {
-        "input_schema": {"type": "object", "required": ["plan_id"]},
+        "input_schema": {
+            "type": "object",
+            "required": ["plan_id"],
+            "properties": {
+                "session_context": {
+                    "type": "object",
+                    "description": "Optional review session state with served concepts and last turn result",
+                }
+            },
+        },
         "summary": "Build review prompt from context",
         "tags": ["learning", "prompt"],
         "stability": "stable",
@@ -229,6 +276,61 @@ def _validate_required(api_name: str, payload: dict[str, Any]) -> None:
     missing = [key for key in required if key not in payload]
     if missing:
         raise ValueError(f"missing_required_fields: {missing}")
+
+
+def _is_incorrect_result(result: Any) -> bool:
+    return str(result or "").lower() in {"wrong", "incorrect", "fail", "blocked"}
+
+
+def _prepare_review_session_state(
+    context: dict[str, Any],
+    session_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    incoming = dict(session_context or {})
+    served = set(incoming.get("served_concept_ids") or [])
+    if not incoming.get("served_concept_ids"):
+        # Server-side fallback: avoid immediately repeating the most recent reviewed concept
+        # when caller does not persist/return session_context.
+        recent_review_concepts = context.get("recent_review_concepts") or []
+        if recent_review_concepts:
+            served.add(recent_review_concepts[0])
+    retry_state = dict(incoming.get("retry_state") or {})
+    last_completed = incoming.get("last_completed_concept_id")
+    last_result = incoming.get("last_result")
+
+    if last_completed:
+        if _is_incorrect_result(last_result):
+            retries = int(retry_state.get(last_completed, 0))
+            if retries < 1:
+                retry_state[last_completed] = retries + 1
+            else:
+                served.add(last_completed)
+                retry_state.pop(last_completed, None)
+        else:
+            served.add(last_completed)
+            retry_state.pop(last_completed, None)
+
+    candidate_items = context.get("candidate_items") or context.get("due_items") or []
+    queue_items: list[dict[str, Any]] = []
+    for item in candidate_items:
+        concept_id = item.get("concept_id")
+        if not concept_id:
+            continue
+        if concept_id in served and retry_state.get(concept_id, 0) == 0:
+            continue
+        queue_items.append(item)
+
+    return {
+        "queue_snapshot": queue_items[:20],
+        "current_item": queue_items[0] if queue_items else None,
+        "next_item": queue_items[1] if len(queue_items) > 1 else None,
+        "served_concept_ids": sorted(served),
+        "next_session_context": {
+            "served_concept_ids": sorted(served),
+            "retry_state": retry_state,
+            "queue_length": len(queue_items),
+        },
+    }
 
 
 class OrchestrationAppService:
@@ -272,10 +374,80 @@ class OrchestrationAppService:
             cursor=cursor,
         )
 
-    def ingest_knowledge_graph(self, graph_id: str, structured_payload: dict[str, Any]) -> dict[str, Any]:
+    def ingest_knowledge_graph(
+        self,
+        graph_id: str,
+        structured_payload: dict[str, Any],
+        sync_mode: str = "upsert_only",
+        prune_scope: dict[str, Any] | None = None,
+        force_delete: bool = False,
+    ) -> dict[str, Any]:
         _validate_required("ingest_knowledge_graph", {"graph_id": graph_id, "structured_payload": structured_payload})
-        log_event(logger, "ingest_knowledge_graph", graph_id=graph_id)
-        return kg_api.ingest_knowledge_graph(graph_id, structured_payload)
+        log_event(logger, "ingest_knowledge_graph", graph_id=graph_id, sync_mode=sync_mode)
+        return kg_api.ingest_knowledge_graph(
+            graph_id,
+            structured_payload,
+            sync_mode=sync_mode,
+            prune_scope=prune_scope,
+            force_delete=force_delete,
+        )
+
+    def remove_knowledge_graph_entities(
+        self,
+        graph_id: str,
+        remove_payload: dict[str, Any],
+        force_delete: bool = False,
+    ) -> dict[str, Any]:
+        _validate_required(
+            "remove_knowledge_graph_entities",
+            {"graph_id": graph_id, "remove_payload": remove_payload},
+        )
+        log_event(logger, "remove_knowledge_graph_entities", graph_id=graph_id, force_delete=force_delete)
+        concept_ids = [str(x) for x in (remove_payload.get("concept_ids") or []) if x]
+        relation_ids = [str(x) for x in (remove_payload.get("relation_ids") or []) if x]
+        topic_ids = [str(x) for x in (remove_payload.get("topic_ids") or []) if x]
+        if not concept_ids and not relation_ids and not topic_ids:
+            return {
+                "error": "empty_remove_payload",
+                "message": "Provide concept_ids, relation_ids, and/or topic_ids",
+                "graph_id": graph_id,
+            }
+
+        expanded_topics = collect_topic_ids_with_descendants(graph_id, topic_ids) if topic_ids else []
+        topic_ids_for_check = expanded_topics if expanded_topics else topic_ids
+        dep = learning_api.check_plan_dependencies(
+            graph_id,
+            concept_ids=concept_ids,
+            topic_ids=topic_ids_for_check,
+        )
+        if dep["has_blocking"] and not force_delete:
+            return {
+                "error": "dependency_conflict",
+                "graph_id": graph_id,
+                "forced": False,
+                "dependency_check": dep,
+                "blocking_dependencies": dep["blocking_dependencies"],
+            }
+
+        cleanup_summary: dict[str, Any] | None = None
+        if dep["has_blocking"] and force_delete:
+            cleanup_summary = learning_api.cleanup_learning_refs_for_graph_entity_removal(
+                graph_id,
+                concept_ids=concept_ids,
+                topic_ids=topic_ids_for_check,
+            )
+
+        delete_summary = kg_api.remove_knowledge_graph_entities(graph_id, remove_payload)
+        if delete_summary.get("error"):
+            return delete_summary
+
+        return {
+            "graph_id": graph_id,
+            "forced": bool(force_delete and dep["has_blocking"]),
+            "dependency_check": dep,
+            "cleanup_summary": cleanup_summary,
+            "delete_summary": delete_summary,
+        }
 
     def list_learning_plans(self, limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
         return learning_api.list_learning_plans(limit=limit, cursor=cursor)
@@ -303,9 +475,25 @@ class OrchestrationAppService:
         context = learning_api.get_quiz_context(plan_id=plan_id, topic_id=topic_id)
         return {"prompt_text": build_prompt("quiz", context), "context_summary": context}
 
-    def get_review_prompt(self, plan_id: str, topic_id: str | None = None) -> dict[str, Any]:
+    def get_review_prompt(
+        self,
+        plan_id: str,
+        topic_id: str | None = None,
+        session_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         _validate_required("get_review_prompt", {"plan_id": plan_id})
         context = learning_api.get_review_context(plan_id=plan_id, topic_id=topic_id)
+        session_state = _prepare_review_session_state(context, session_context)
+        context = {
+            **context,
+            "session_queue": {
+                "items": session_state["queue_snapshot"],
+                "current_item": session_state["current_item"],
+                "next_item": session_state["next_item"],
+                "served_concept_ids": session_state["served_concept_ids"],
+            },
+            "next_session_context": session_state["next_session_context"],
+        }
         return {"prompt_text": build_prompt("review", context), "context_summary": context}
 
     def append_learning_record(self, plan_id: str, mode: str, record_payload: dict[str, Any]) -> dict[str, Any]:

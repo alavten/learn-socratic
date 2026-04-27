@@ -42,6 +42,41 @@ def _parser() -> argparse.ArgumentParser:
     ingest_graph = sub.add_parser("ingest-knowledge-graph", help="Ingest structured graph payload")
     ingest_graph.add_argument("--graph-id", required=True)
     ingest_graph.add_argument("--payload-file", required=True, help="Path to structured payload JSON")
+    ingest_graph.add_argument(
+        "--sync-mode",
+        choices=["upsert_only", "upsert_and_prune"],
+        default="upsert_only",
+        help="upsert_and_prune removes DB concepts/relations missing from payload within prune scope",
+    )
+    ingest_graph.add_argument(
+        "--prune-topic-ids",
+        help="Comma-separated topic ids for prune scope (used with upsert_and_prune)",
+    )
+    ingest_graph.add_argument(
+        "--prune-concept-prefix",
+        help="Optional concept_id prefix filter within prune scope",
+    )
+    ingest_graph.add_argument(
+        "--force-delete",
+        action="store_true",
+        help="When pruning, remove learning rows that block concept removal",
+    )
+
+    remove_graph = sub.add_parser(
+        "remove-knowledge-graph-entities",
+        help="Remove concepts/relations/topics after dependency check",
+    )
+    remove_graph.add_argument("--graph-id", required=True)
+    remove_graph.add_argument(
+        "--payload-file",
+        required=True,
+        help="JSON object with optional concept_ids, relation_ids, topic_ids arrays",
+    )
+    remove_graph.add_argument(
+        "--force-delete",
+        action="store_true",
+        help="Drop learning-plan references then hard-delete graph entities",
+    )
 
     list_plans = sub.add_parser("list-learning-plans", help="List learning plans")
     list_plans.add_argument("--limit", type=int, default=20)
@@ -71,6 +106,10 @@ def _parser() -> argparse.ArgumentParser:
     review_prompt = sub.add_parser("get-review-prompt", help="Get review prompt")
     review_prompt.add_argument("--plan-id", required=True)
     review_prompt.add_argument("--topic-id")
+    review_prompt.add_argument(
+        "--session-context-json",
+        help="Optional JSON string for review session state (served_concept_ids/last_result/etc.)",
+    )
 
     append_record = sub.add_parser("append-learning-record", help="Append a learning record")
     append_record.add_argument("--plan-id", required=True)
@@ -110,7 +149,32 @@ def main() -> None:
     if args.command == "ingest-knowledge-graph":
         payload_path = Path(args.payload_file)
         payload = json.loads(payload_path.read_text(encoding="utf-8"))
-        _print_json(service.ingest_knowledge_graph(graph_id=args.graph_id, structured_payload=payload))
+        prune_scope: dict[str, Any] = {}
+        if getattr(args, "prune_topic_ids", None):
+            topic_ids = [item.strip() for item in args.prune_topic_ids.split(",") if item.strip()]
+            prune_scope["topic_ids"] = topic_ids
+        if getattr(args, "prune_concept_prefix", None):
+            prune_scope["concept_id_prefix"] = args.prune_concept_prefix
+        kwargs: dict[str, Any] = {
+            "graph_id": args.graph_id,
+            "structured_payload": payload,
+            "sync_mode": args.sync_mode,
+            "force_delete": bool(args.force_delete),
+        }
+        if prune_scope:
+            kwargs["prune_scope"] = prune_scope
+        _print_json(service.ingest_knowledge_graph(**kwargs))
+        return
+    if args.command == "remove-knowledge-graph-entities":
+        payload_path = Path(args.payload_file)
+        remove_payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        _print_json(
+            service.remove_knowledge_graph_entities(
+                graph_id=args.graph_id,
+                remove_payload=remove_payload,
+                force_delete=bool(args.force_delete),
+            )
+        )
         return
     if args.command == "list-learning-plans":
         _print_json(service.list_learning_plans(limit=args.limit, cursor=args.cursor))
@@ -135,7 +199,14 @@ def main() -> None:
         _print_json(service.get_quiz_prompt(plan_id=args.plan_id, topic_id=args.topic_id))
         return
     if args.command == "get-review-prompt":
-        _print_json(service.get_review_prompt(plan_id=args.plan_id, topic_id=args.topic_id))
+        session_context = json.loads(args.session_context_json) if args.session_context_json else None
+        _print_json(
+            service.get_review_prompt(
+                plan_id=args.plan_id,
+                topic_id=args.topic_id,
+                session_context=session_context,
+            )
+        )
         return
     if args.command == "append-learning-record":
         record_payload: dict[str, Any] = {

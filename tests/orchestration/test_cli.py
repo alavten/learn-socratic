@@ -23,9 +23,30 @@ class FakeService:
         )
         return {"ok": True}
 
-    def ingest_knowledge_graph(self, graph_id, structured_payload):
+    def ingest_knowledge_graph(self, graph_id, structured_payload, **kwargs):
         self.calls.append(
-            ("ingest_knowledge_graph", {"graph_id": graph_id, "structured_payload": structured_payload})
+            (
+                "ingest_knowledge_graph",
+                {"graph_id": graph_id, "structured_payload": structured_payload, **kwargs},
+            )
+        )
+        return {"ok": True}
+
+    def remove_knowledge_graph_entities(self, graph_id, remove_payload, force_delete=False):
+        self.calls.append(
+            (
+                "remove_knowledge_graph_entities",
+                {"graph_id": graph_id, "remove_payload": remove_payload, "force_delete": force_delete},
+            )
+        )
+        return {"ok": True}
+
+    def get_review_prompt(self, plan_id, topic_id=None, session_context=None):
+        self.calls.append(
+            (
+                "get_review_prompt",
+                {"plan_id": plan_id, "topic_id": topic_id, "session_context": session_context},
+            )
         )
         return {"ok": True}
 
@@ -107,6 +128,37 @@ def test_cli_append_record_optional_fields(monkeypatch):
     assert outputs == [{"ok": True}]
 
 
+def test_cli_remove_knowledge_graph_reads_payload_file(monkeypatch, tmp_path):
+    service = FakeService()
+    outputs = []
+    remove_payload = {"concept_ids": ["c1"], "relation_ids": [], "topic_ids": []}
+    payload_file = tmp_path / "remove.json"
+    payload_file.write_text(json.dumps(remove_payload), encoding="utf-8")
+
+    monkeypatch.setattr(cli, "create_app", lambda: service)
+    monkeypatch.setattr(cli, "_print_json", lambda p: outputs.append(p))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli.py",
+            "remove-knowledge-graph-entities",
+            "--graph-id",
+            "g1",
+            "--payload-file",
+            str(payload_file),
+            "--force-delete",
+        ],
+    )
+
+    cli.main()
+
+    assert service.calls[0][0] == "remove_knowledge_graph_entities"
+    assert service.calls[0][1]["graph_id"] == "g1"
+    assert service.calls[0][1]["remove_payload"]["concept_ids"] == ["c1"]
+    assert service.calls[0][1]["force_delete"] is True
+    assert outputs == [{"ok": True}]
+
+
 def test_cli_ingest_reads_payload_file(monkeypatch, tmp_path):
     service = FakeService()
     outputs = []
@@ -134,3 +186,29 @@ def test_cli_ingest_reads_payload_file(monkeypatch, tmp_path):
     assert service.calls[0][1]["graph_id"] == "g1"
     assert service.calls[0][1]["structured_payload"]["graph"]["graph_name"] == "x"
     assert outputs == [{"ok": True}]
+
+
+def test_cli_review_prompt_supports_session_context_json(monkeypatch):
+    service = FakeService()
+    outputs = []
+    monkeypatch.setattr(cli, "create_app", lambda: service)
+    monkeypatch.setattr(cli, "_print_json", lambda p: outputs.append(p))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli.py",
+            "get-review-prompt",
+            "--plan-id",
+            "p1",
+            "--topic-id",
+            "t1",
+            "--session-context-json",
+            '{"served_concept_ids":["c1"],"last_result":"correct"}',
+        ],
+    )
+
+    cli.main()
+
+    assert outputs == [{"ok": True}]
+    assert service.calls[0][0] == "get_review_prompt"
+    assert service.calls[0][1]["session_context"]["served_concept_ids"] == ["c1"]

@@ -16,7 +16,7 @@
 ### System Operator View（按运维操作）
 
 - API 发现：`list-apis`、`get-api-spec`
-- 图谱运维：`list-knowledge-graphs`、`get-knowledge-graph`、`ingest-knowledge-graph`
+- 图谱运维：`list-knowledge-graphs`、`get-knowledge-graph`、`ingest-knowledge-graph`、`remove-knowledge-graph-entities`
 - 学习运维：`list-learning-plans`、`create-learning-plan`、`extend-learning-plan-topics`
 - 交互运行：`get-learning-prompt` / `get-quiz-prompt` / `get-review-prompt`
 - 记录提交：`append-learning-record`
@@ -24,6 +24,12 @@
 补充说明：
 - 学习路径导航（用户视角）在 `README.md`。
 - 本文档作为系统调用细节的单一维护源。
+
+## 文档分工说明
+
+- `modes/*.md` 负责交互契约（如何问、如何反馈、输出字段要求）。
+- `docs/architecture-design.md` 与本文档负责编排执行链（API 调用顺序、上下文组装、状态推进）。
+- 当两者出现流程细节冲突时，以编排文档（`architecture-design.md` + 本文档）为准；模式文档不重复维护 API 调用顺序。
 
 ## 使用方式
 
@@ -251,6 +257,54 @@ CLI `--payload-file` 约定：
 - `concepts` 必填：`concept_id / canonical_name / definition`
   - 错误示例：`name` 代替 `canonical_name`
 
+#### 可选：`sync_mode` / `prune_scope` / `force_delete`
+
+- `sync_mode`：`upsert_only`（默认）或 `upsert_and_prune`。后者在**成功写入**当前 payload 后，在 `prune_scope` 限定的概念集合内，将**库中存在但本次 payload 未出现**的概念与相关关系做**硬删除**。
+- `prune_scope`：至少提供 `topic_ids` 和/或非空 `concept_id_prefix`，避免误删整图。
+- `force_delete`：剪枝时若学习计划仍引用待删概念，默认阻断；为 `true` 时先清理学习域引用（任务、状态、记录、计划-主题行）再删图谱。
+
+CLI 示例：
+
+```bash
+python scripts/cli.py ingest-knowledge-graph --graph-id g1 --payload-file ./payload.json \
+  --sync-mode upsert_and_prune --prune-topic-ids t1,t2 --force-delete
+```
+
+### `remove_knowledge_graph_entities(graph_id, remove_payload, force_delete=False)`
+
+编排层**先**调用学习域 `check_plan_dependencies`，存在依赖且 `force_delete=false` 时返回 `dependency_conflict`；通过或强制删除时再调用图谱域硬删除。
+
+**`remove_payload` 示例**（`--payload-file` 文件内容）
+
+```json
+{
+  "concept_ids": ["c1"],
+  "relation_ids": ["r1"],
+  "topic_ids": ["t1"]
+}
+```
+
+至少一个数组非空。
+
+**CLI**
+
+```bash
+python scripts/cli.py remove-knowledge-graph-entities --graph-id g1 --payload-file ./remove.json --force-delete
+```
+
+**依赖冲突响应（节选）**
+
+```json
+{
+  "error": "dependency_conflict",
+  "graph_id": "g1",
+  "forced": false,
+  "blocking_dependencies": [
+    { "plan_id": "...", "dep_type": "learning_task", "entity_id": "c1" }
+  ]
+}
+```
+
 ### `get_concepts(graph_id, concept_scope, detail='brief', concept_limit=20, cursor=None)`
 
 **请求示例**
@@ -358,7 +412,16 @@ CLI `--payload-file` 约定：
 
 ### `get_review_context(plan_id, topic_id=None)`
 
-返回复习上下文（到期项、遗忘风险、优先原因）。
+返回复习上下文（到期项、遗忘风险、优先原因、候选队列评分输入）。
+
+默认返回字段（兼容 + 新增）：
+- `due_items`：待复习任务（兼容字段）
+- `forgetting_risk_summary`
+- `priority_reasons`
+- `candidate_items`：按综合评分排序的候选概念（含 `review_score`）
+- `review_score_factors`：每个概念的评分因子（`overdue_score/forgetting_risk_score/weakness_score/recency_gap_score`）
+- `queue_policy`：评分权重与 tie-break 策略
+- `scope`：实际生效范围（包含 plan/topic 解析结果）
 
 ---
 
@@ -366,7 +429,7 @@ CLI `--payload-file` 约定：
 
 ### `get_learning_prompt(plan_id, topic_id=None)`
 ### `get_quiz_prompt(plan_id, topic_id=None)`
-### `get_review_prompt(plan_id, topic_id=None)`
+### `get_review_prompt(plan_id, topic_id=None, session_context=None)`
 
 以上 API 响应结构一致：
 
@@ -377,6 +440,34 @@ CLI `--payload-file` 约定：
 }
 ```
 
+`get_review_prompt` 支持会话级队列推进输入：
+
+```json
+{
+  "plan_id": "7a8d3be0-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "topic_id": "t1",
+  "session_context": {
+    "served_concept_ids": ["c1"],
+    "last_completed_concept_id": "c1",
+    "last_result": "correct"
+  }
+}
+```
+
+`context_summary` 里新增：
+- `session_queue.items/current_item/next_item`
+- `next_session_context`（用于下一轮继续调用）
+- `candidate_items/review_score_factors/queue_policy`（复习队列综合评分输入）
+
+推荐 CLI（带会话推进上下文）：
+
+```bash
+python scripts/cli.py get-review-prompt \
+  --plan-id PLAN_ID \
+  --topic-id t1 \
+  --session-context-json '{"served_concept_ids":["c1"],"last_completed_concept_id":"c1","last_result":"correct"}'
+```
+
 ---
 
 ## 5) 记录提交 API
@@ -384,6 +475,10 @@ CLI `--payload-file` 约定：
 ### `append_learning_record(plan_id, mode, record_payload)`
 
 `mode` 取值：`learn` / `quiz` / `review`
+
+当 `mode=review` 时，调用方应在用户作答后输出：
+- `detailed_explanation`：本题的详细原文依据解释（定义/关系/证据）
+- `next_question`：队列推进后的下一题题目
 
 **请求示例**
 
@@ -437,10 +532,19 @@ CLI `--payload-file` 约定：
 - API 名不存在：`unknown_api: <api_name>`
 - 提交非法模式：`invalid_mode`
 - 图谱录入校验失败：`validation_summary.ok = false`，错误详见 `validation_summary.errors`
+- 图谱移除被学习计划阻断：`remove_knowledge_graph_entities` 返回 `error: dependency_conflict`，或 `ingest` 剪枝阶段 `prune_result.blocked = true` 且 `validation_summary.ok = false`
 
 ---
 
-## 7) 最小端到端示例
+## 7) 图谱硬删除、剪枝与备份回滚
+
+- **硬删除**：`remove_knowledge_graph_entities` 与 `upsert_and_prune` 剪枝均为物理删除 SQLite 行；不提供应用层 `restore`。
+- **备份**：执行 `--force-delete` 或大批量剪枝前，建议复制环境变量 `DOC_SOCRATIC_DB_PATH` 指向的库文件（或整库目录）作为快照，以便故障时恢复。
+- **灰度**：先在副本库上跑 `remove` / `upsert_and_prune`，校验 `dependency_check` 与 `delete_summary` 后再对生产库操作。
+
+---
+
+## 8) 最小端到端示例
 
 ```python
 from scripts.app import create_app

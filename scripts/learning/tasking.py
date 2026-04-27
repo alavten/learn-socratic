@@ -18,13 +18,21 @@ def upsert_task_for_state(
     concept_id: str,
     state_summary: dict[str, Any],
     reason_type: str = "weak_point",
+    last_result: str | None = None,
 ) -> dict[str, Any]:
     now = _now()
     mastery = float(state_summary.get("mastery_score", 0.0))
     forgetting = float(state_summary.get("forgetting_risk", 1.0))
+    normalized_result = (last_result or "").lower()
+    is_correct = normalized_result in {"correct", "ok", "pass"}
     task_type = "review" if forgetting > 0.35 else "learn"
     priority = max(0.1, min(1.0, 0.6 * forgetting + 0.4 * (1.0 - mastery)))
-    due_at = now + timedelta(hours=max(4, int((1.0 - priority) * 24)))
+    # Dequeue-friendly policy (plan A): after a correct review, lower priority and push due later.
+    if is_correct:
+        priority = max(0.1, priority * 0.55)
+        due_at = now + timedelta(hours=max(24, int((1.0 - priority) * 36)))
+    else:
+        due_at = now + timedelta(hours=max(4, int((1.0 - priority) * 24)))
 
     task = query_one(
         """

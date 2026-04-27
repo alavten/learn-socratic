@@ -26,7 +26,7 @@
 3. Fetch quiz context:
    - `get_quiz_prompt(plan_id, topic_id?)`
 4. Generate questions and collect learner answers.
-5. Score and explain through model logic.
+5. Evaluate only learner answers first, then explain through model logic.
 6. Persist result:
    - `append_learning_record(plan_id, mode="quiz", record_payload)`
 
@@ -35,6 +35,8 @@
 - Ask exactly one quiz item per turn.
 - Return verdict + concise correction + one next question direction.
 - Always include `summary` and `next_step`.
+- Separate learner answer from system explanation in output/state.
+- Never treat system explanation/correction text as learner answer.
 
 ## AI Execution Directives
 
@@ -47,6 +49,8 @@
   - `Explain`, `Interpret`, `Apply`, `Perspective`, `Self-Knowledge`
 - Use retrieval-first behavior: ask first, evaluate second, explain third.
 - Rotate variant style for the same concept to avoid recognition bias.
+- Scoring must be based on explicit learner response spans only.
+- If learner response is missing/ambiguous, mark result as `partial` or `blocked`, not `correct`.
 
 ## Escalation Rule
 
@@ -77,9 +81,10 @@
 ## Steps
 
 1. Resolve scope and call `get_quiz_prompt(plan_id, topic_id?)`.
-2. Generate questions, collect answers, and evaluate outcomes.
-3. Write `append_learning_record(..., mode='quiz', ...)`.
-4. Return feedback and targeted follow-up suggestions.
+2. Generate question and collect explicit learner answer text first.
+3. Evaluate outcome from learner answer only, then provide explanation/correction.
+4. Write `append_learning_record(..., mode='quiz', ...)` from learner-answer-based verdict.
+5. Return feedback and targeted follow-up suggestions.
 
 ## Output
 

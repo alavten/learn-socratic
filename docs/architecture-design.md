@@ -8,13 +8,12 @@
 
 ### 1.1 子系统与职责
 
-| 模块 / 组件 | 职责 | 典型载体 / 产物 |
-| --- | --- | --- |
-| **路由与工作流组件** | 基于用户意图完成模式路由（ingest/learn/quiz/review）与工作流分发；仅定义流程，不直接读写业务存储。 | `SKILL.md`、`modes/*.md` |
-| **应用编排与 API 组件** | 对外暴露统一 API，编排业务模块调用，做入参校验与提示词文本封装。 | `orchestration_app_service`、`list_apis/get_api_spec` |
-| **知识图谱模块** | 负责图谱入库、概念/关系/证据治理与通用查询，提供学习域所需图谱材料。 | `Graph`、`Topic`、`Concept`、`TopicConcept`、`ConceptRelation`、`Evidence`、`RelationEvidence` |
-| **学习模块** | 负责学习计划、学习记录、状态快照与任务调度，并聚合学习/测验/复习上下文。 | `Learner`、`LearningPlan`、`LearningSession`、`LearningRecord`、`LearnerConceptState`、`LearningTask` |
-
+| 模块 / 组件             | 职责                                                                                               | 典型载体 / 产物                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **路由与工作流组件**    | 基于用户意图完成模式路由（ingest/learn/quiz/review）与工作流分发；仅定义流程，不直接读写业务存储。 | `SKILL.md`、`modes/*.md`                                                                              |
+| **应用编排与 API 组件** | 对外暴露统一 API，编排业务模块调用，做入参校验与提示词文本封装。                                   | `orchestration_app_service`、`list_apis/get_api_spec`                                                 |
+| **知识图谱模块**        | 负责图谱入库、概念/关系/证据治理与通用查询，提供学习域所需图谱材料。                               | `Graph`、`Topic`、`Concept`、`TopicConcept`、`ConceptRelation`、`Evidence`、`RelationEvidence`        |
+| **学习模块**            | 负责学习计划、学习记录、状态快照与任务调度，并聚合学习/测验/复习上下文。                           | `Learner`、`LearningPlan`、`LearningSession`、`LearningRecord`、`LearnerConceptState`、`LearningTask` |
 
 ### 1.2 架构边界与协作原则
 
@@ -50,6 +49,7 @@
 与 `[data-model-design.md](data-model-design.md)` 一致：知识图谱域刻画「学什么、如何组织与溯源」；学习域刻画「谁在学、学得怎样、下一步做什么」。以下仅列概念职责与关键锚点，属性与枚举以数据模型文档为准。
 
 命名约定说明：
+
 - 数据模型文档中的实体属性沿用其规范命名（包含既有 camelCase 字段）。
 - 运行时 API 与模式文档优先使用 `snake_case` 作为外部调用字段命名。
 
@@ -73,8 +73,6 @@ erDiagram
     Concept ||--o{ LearnerConceptState : referencedBy
     Concept ||--o{ LearningTask : referencedBy
 ```
-
-
 
 ### 2.1 知识图谱域（核心实体）
 
@@ -137,8 +135,6 @@ sequenceDiagram
   end
 ```
 
-
-
 ### 3.2 学习业务流程（时序）
 
 ```mermaid
@@ -183,8 +179,6 @@ sequenceDiagram
   Agent-->>User: 输出下一步学习路径
 ```
 
-
-
 ### 3.3 测验业务流程（时序）
 
 ```mermaid
@@ -218,8 +212,6 @@ sequenceDiagram
   Agent-->>User: 解释结果并给出后续动作
 ```
 
-
-
 ### 3.4 复习业务流程（时序）
 
 ```mermaid
@@ -232,16 +224,17 @@ sequenceDiagram
   participant Learning as 学习域服务
 
   User->>Agent: 发起复习
-  Agent->>Orchestrator: get_review_prompt(plan_id, topic_id)
+  Agent->>Orchestrator: get_review_prompt(plan_id, topic_id, session_context)
   Orchestrator->>Learning: get_review_context(plan_id, topic_id)
   Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
   Learning->>KG: get_concept_relations(graph_id, concept_scope, depth=1)
   Learning->>KG: get_concept_evidence(graph_id, concept_scope, mode='summary')
   KG-->>Learning: concept_materials(summary)
   Learning-->>Orchestrator: review_context
-  Orchestrator-->>Agent: review_context
+  Orchestrator->>Orchestrator: 构建session_queue与next_session_context
+  Orchestrator-->>Agent: review_context + session_queue
   Agent-->>User: 下发复习任务与上下文
-  loop 每次复习交互
+  loop 每次复习交互(队列推进)
     Agent->>LLM: 生成复习提问/提示/纠错解释
     LLM-->>Agent: 复习交互内容
     Agent->>Agent: 聚合本轮复习交互结果
@@ -250,10 +243,8 @@ sequenceDiagram
   Orchestrator->>Learning: append_learning_record(plan_id, review, record_payload)
   Learning-->>Orchestrator: commit_result
   Orchestrator-->>Agent: 复习记录提交结果
-  Agent-->>User: 推荐下一轮复习
+  Agent-->>User: 当前反馈 + 下一题(队列下一概念)
 ```
-
-
 
 ### 3.5 流程切换与跨流程衔接逻辑（时序）
 
@@ -303,8 +294,6 @@ sequenceDiagram
   Agent-->>User: 输出解释 + 下一步
 ```
 
-
-
 ---
 
 ## 4. 代码结构分层（目标态）
@@ -313,15 +302,13 @@ sequenceDiagram
 
 ### 4.1 分层总览与完整目录结构
 
-
-| 层级                        | 典型形态                                           | 职责                                                  |
-| ------------------------- | ---------------------------------------------- | --------------------------------------------------- |
-| **L1 技能入口**               | 根级 `SKILL.md`                                  | 元数据、模式路由、渐进式披露顺序。                                   |
-| **L2 模式契约**               | `modes/*.md`                                   | 新学 / 测验 / 复习的步骤与人机措辞；声明调用的运行时能力（不写死存储格式）。           |
-| **L3 编排与接口层**             | `scripts/orchestration/`                       | 承载编排应用服务与接口自描述能力（`list_apis/get_api_spec`），并协调业务模块。 |
-| **L4 业务模块（module-first）** | `scripts/knowledge_graph/`、`scripts/learning/` | 按模块组织能力：图谱治理、学习回合数据、学习记录与状态更新。                      |
-| **L5 基础技术支撑**             | `scripts/foundation/`                          | DB 适配与日志等非业务共性能力（不含模型推理）。                           |
-
+| 层级                            | 典型形态                                        | 职责                                                                           |
+| ------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------ |
+| **L1 技能入口**                 | 根级 `SKILL.md`                                 | 元数据、模式路由、渐进式披露顺序。                                             |
+| **L2 模式契约**                 | `modes/*.md`                                    | 新学 / 测验 / 复习的步骤与人机措辞；声明调用的运行时能力（不写死存储格式）。   |
+| **L3 编排与接口层**             | `scripts/orchestration/`                        | 承载编排应用服务与接口自描述能力（`list_apis/get_api_spec`），并协调业务模块。 |
+| **L4 业务模块（module-first）** | `scripts/knowledge_graph/`、`scripts/learning/` | 按模块组织能力：图谱治理、学习回合数据、学习记录与状态更新。                   |
+| **L5 基础技术支撑**             | `scripts/foundation/`                           | DB 适配与日志等非业务共性能力（不含模型推理）。                                |
 
 不属于脚本层的能力（由 AI Agent 或宿主环境提供）：
 
@@ -402,6 +389,7 @@ doc-socratic-learning-optimized/
   - **`quiz.md`**：测验模式工作流（确定测验范围 -> 出题与作答 -> 判分与讲评 -> 提交回合结果 -> 给出补强建议）。
   - **`review.md`**：复习模式工作流（读取复习任务/到期项 -> 复述或抽问 -> 记录结果 -> 更新复习队列 -> 推荐下一轮）。
   - **文档结构建议（统一模板）**：`触发条件`、`输入`、`步骤`、`输出`、`失败重试/降级`、`下一步跳转`。其中“输出”允许各模式自定义 payload。
+
 ### 4.3 编排与接口层（L3）
 
 `orchestration_app_service.py` 作为编排应用服务，由 AI Agent 在读取 L1 路由规则后按目标模式调用，并协调 L4 业务模块完成一次完整交互。各业务模块仅返回结构化数据；在编排层由 `prompt_templates` 统一封装为可直接供 AI Agent 使用的提示词文本。作为 AI Agent 的一部分，它不直接承担模型推理调用，并对外统一提供 `list_apis/get_api_spec` 的自描述接口能力。
@@ -440,8 +428,6 @@ sequenceDiagram
   Agent-->>User: 输出结果
 ```
 
-
-
 - **具体职责**：
   - 以“业务模块”抽象对接学习与图谱能力，不在编排层固化单模块语义。
   - 获取业务模块返回的结构化数据，并通过 `prompt_templates` 组装提示词文本。
@@ -459,7 +445,7 @@ sequenceDiagram
   8. `extend_learning_plan_topics(plan_id, topic_ids, reason=None)`：按学习进展向既有计划增量加入主题范围，返回新增结果与范围摘要。
   9. `get_learning_prompt(plan_id, topic_id=None)`：内部调用 `learning.get_learning_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回学习提示词文本；可选 `topic_id` 用于聚焦当前学习主题。
   10. `get_quiz_prompt(plan_id, topic_id=None)`：内部调用 `learning.get_quiz_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回测验提示词文本；可选 `topic_id` 用于限定测验主题范围。
-  11. `get_review_prompt(plan_id, topic_id=None)`：内部调用 `learning.get_review_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回复习提示词文本；可选 `topic_id` 用于限定复习主题范围。
+  11. `get_review_prompt(plan_id, topic_id=None, session_context=None)`：内部调用 `learning.get_review_context(...)` 拉取结构化上下文，结合 `session_context` 计算 `session_queue`（当前题/下一题/已服务概念），并经 `prompt_templates` 封装后返回复习提示词文本。
   12. `append_learning_record(plan_id, mode, record_payload)`：写入学习记录并返回提交结果。
 - **边界**：
   - 仅通过 L4 模块 API 访问业务数据，不直接操作存储。
@@ -481,58 +467,58 @@ sequenceDiagram
   - **分页与限流**：集合结果必须支持 `limit/cursor`；默认限制 `concepts` 数量，返回 `has_more`。
 - **`knowledge_graph` 模块（对应 3.1，支撑 3.2～3.5）必须提供的方法**：
   1. `list_knowledge_graphs()`
-    - 默认返回：`graph_id`、`name`、`revision`、`status`、`topic_count`、`concept_count`、`updated_at`。
-    - 按需扩展：无。
-    - 不建议返回：图谱内 `concept/evidence` 明细。
+  - 默认返回：`graph_id`、`name`、`revision`、`status`、`topic_count`、`concept_count`、`updated_at`。
+  - 按需扩展：无。
+  - 不建议返回：图谱内 `concept/evidence` 明细。
   2. `get_knowledge_graph(graph_id, topic_id=None, concept_limit=20, cursor=None)`
-    - 默认返回：`topics`、`topic_concepts`、`concept_briefs`（`concept_id`、`canonical_name`、`short_definition`、`difficulty`）。
-    - 按需扩展：`detail.concepts`（完整定义、更多属性）。
-    - 不建议返回：Evidence 原文列表（除非明确请求）。
+  - 默认返回：`topics`、`topic_concepts`、`concept_briefs`（`concept_id`、`canonical_name`、`short_definition`、`difficulty`）。
+  - 按需扩展：`detail.concepts`（完整定义、更多属性）。
+  - 不建议返回：Evidence 原文列表（除非明确请求）。
   3. `ingest_knowledge_graph(graph_id, structured_payload)`
-    - 默认返回：`graph_id`、`version`、`change_summary`、`validation_summary`。
-    - 按需扩展：`detail.failed_items`（校验失败明细）。
-    - 不建议返回：全量写入后的图谱快照。
+  - 默认返回：`graph_id`、`version`、`change_summary`、`validation_summary`。
+  - 按需扩展：`detail.failed_items`（校验失败明细）。
+  - 不建议返回：全量写入后的图谱快照。
   4. `get_concepts(graph_id, concept_scope, detail='brief', concept_limit=20, cursor=None)`
-    - 默认返回：`concept_briefs`（`concept_id`、`canonical_name`、`short_definition`、`difficulty`）。
-    - 按需扩展：`detail.concepts`（完整定义、更多属性）。
-    - 不建议返回：无 scope 限制的全量概念集合。
+  - 默认返回：`concept_briefs`（`concept_id`、`canonical_name`、`short_definition`、`difficulty`）。
+  - 按需扩展：`detail.concepts`（完整定义、更多属性）。
+  - 不建议返回：无 scope 限制的全量概念集合。
   5. `get_concept_relations(graph_id, concept_scope, depth=1, relation_limit=50)`
-    - 默认返回：`relation_briefs`（`from_concept_id`、`to_concept_id`、`relation_type`、`strength`）。
-    - 按需扩展：`detail.relations`（方向、权重、版本状态等）。
-    - 不建议返回：多跳深层关系全量展开。
+  - 默认返回：`relation_briefs`（`from_concept_id`、`to_concept_id`、`relation_type`、`strength`）。
+  - 按需扩展：`detail.relations`（方向、权重、版本状态等）。
+  - 不建议返回：多跳深层关系全量展开。
   6. `get_concept_evidence(graph_id, concept_scope, mode='summary', evidence_limit=20)`
-    - 默认返回：`evidence_summary`（每 concept 1~2 条摘要与来源标识）。
-    - 按需扩展：`detail.evidence`（原文片段与定位信息）。
-    - 不建议返回：全量 Evidence 原文（默认禁止）。
+  - 默认返回：`evidence_summary`（每 concept 1~2 条摘要与来源标识）。
+  - 按需扩展：`detail.evidence`（原文片段与定位信息）。
+  - 不建议返回：全量 Evidence 原文（默认禁止）。
 - **`learning` 模块（对应 3.2～3.5）必须提供的方法**：
   1. `list_learning_plans()`
-    - 默认返回：`plan_id`、`graph_id`、`progress`、`status`、`focus_topics`、`updated_at`。
-    - 按需扩展：`summary.goal_snapshot`。
-    - 不建议返回：计划下全量记录与任务明细。
+  - 默认返回：`plan_id`、`graph_id`、`progress`、`status`、`focus_topics`、`updated_at`。
+  - 按需扩展：`summary.goal_snapshot`。
+  - 不建议返回：计划下全量记录与任务明细。
   2. `create_learning_plan(graph_id, topic_id=None)`
-    - 默认返回：`plan_id`、`graph_id`、`initial_scope_summary`。
-    - 按需扩展：`detail.bootstrap_tasks`（初始化任务摘要）。
-    - 不建议返回：完整任务队列。
+  - 默认返回：`plan_id`、`graph_id`、`initial_scope_summary`。
+  - 按需扩展：`detail.bootstrap_tasks`（初始化任务摘要）。
+  - 不建议返回：完整任务队列。
   3. `extend_learning_plan_topics(plan_id, topic_ids, reason=None)`
-    - 默认返回：`plan_id`、`added_topics`、`skipped_topics`、`new_scope_summary`。
-    - 按需扩展：`detail.rejected_topics`（不可加入主题的原因）。
-    - 不建议返回：更新后的全量任务/状态快照。
+  - 默认返回：`plan_id`、`added_topics`、`skipped_topics`、`new_scope_summary`。
+  - 按需扩展：`detail.rejected_topics`（不可加入主题的原因）。
+  - 不建议返回：更新后的全量任务/状态快照。
   4. `get_learning_context(plan_id, topic_id=None)`
-    - 默认返回：`goal_summary`、`state_summary`、`task_summary`、`concept_scope`、`concept_pack_brief`。
-    - 按需扩展：`detail.concept_pack`（更完整 Concept 信息）。
-    - 不建议返回：Evidence full（默认不返回）。
+  - 默认返回：`goal_summary`、`state_summary`、`task_summary`、`concept_scope`、`concept_pack_brief`。
+  - 按需扩展：`detail.concept_pack`（更完整 Concept 信息）。
+  - 不建议返回：Evidence full（默认不返回）。
   5. `get_quiz_context(plan_id, topic_id=None)`
-    - 默认返回：`quiz_scope`、`history_performance_summary`、`difficulty_hint`、`constraints`。
-    - 按需扩展：`detail.concept_pack_brief`（仅出题必要概念材料）。
-    - 不建议返回：与出题无关的长文本上下文。
+  - 默认返回：`quiz_scope`、`history_performance_summary`、`difficulty_hint`、`constraints`。
+  - 按需扩展：`detail.concept_pack_brief`（仅出题必要概念材料）。
+  - 不建议返回：与出题无关的长文本上下文。
   6. `get_review_context(plan_id, topic_id=None)`
-    - 默认返回：`due_items`、`forgetting_risk_summary`、`priority_reasons`、`constraints`。
-    - 按需扩展：`detail.concept_refresh_brief`。
-    - 不建议返回：全量历史记录流。
+  - 默认返回：`due_items`、`forgetting_risk_summary`、`priority_reasons`、`candidate_items`、`review_score_factors`、`queue_policy`、`scope`、`constraints`。
+  - 按需扩展：`detail.concept_refresh_brief`。
+  - 不建议返回：全量历史记录流。
   7. `append_learning_record(plan_id, mode, record_payload)`
-    - 默认返回：`commit_result`、`state_delta_summary`、`task_delta_summary`。
-    - 按需扩展：`detail.updated_tasks`（必要时）。
-    - 不建议返回：更新后的全量 `LearnerConceptState/LearningTask`。
+  - 默认返回：`commit_result`、`state_delta_summary`、`task_delta_summary`。
+  - 按需扩展：`detail.updated_tasks`（必要时）。
+  - 不建议返回：更新后的全量 `LearnerConceptState/LearningTask`。
 - **模块协作关系（对齐 3.2～3.5）**：
   - `learning.extend_learning_plan_topics(...)` 负责计划范围变更；成功后由 Agent 再调用 `get_*_prompt(...)` 获取新范围提示词。
   - `learning.get_*_context(...)` 内部按 `graph_id + concept_scope` 调用 `knowledge_graph.get_concepts/get_concept_relations/get_concept_evidence(mode='summary')` 组装场景化上下文。
@@ -542,4 +528,3 @@ sequenceDiagram
 
 - **DB 适配**：采用 **SQLite** 进行持久化；由 `scripts/foundation/storage.py` 统一封装存取，库文件默认落在 `data/skill.sqlite3`（与 `scripts/` 同级目录）。
 - **日志记录**：记录关键流程节点与错误上下文，支持问题定位与最小化运行追踪。
-

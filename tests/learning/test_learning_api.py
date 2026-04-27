@@ -7,6 +7,7 @@ from scripts.learning.api import (
     get_review_context,
     list_learning_plans,
 )
+from scripts.foundation.storage import transaction
 from scripts.knowledge_graph.api import ingest_knowledge_graph
 from tests.helpers import sample_graph_payload
 
@@ -19,6 +20,44 @@ def test_plan_create_extend_and_list(isolated_db):
     assert extended["added_topics"] == ["t2"]
     plans = list_learning_plans()
     assert plans["items"][0]["plan_id"] == plan["plan_id"]
+
+
+def test_list_plans_returns_all_focus_topics(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+    with transaction() as conn:
+        conn.execute(
+            """
+            INSERT INTO Topic(topicId, graphId, parentTopicId, topicName, topicType, sortOrder, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("t3", "g1", None, "Topic 3", "chapter", 3, "active"),
+        )
+        conn.execute(
+            """
+            INSERT INTO Topic(topicId, graphId, parentTopicId, topicName, topicType, sortOrder, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("t4", "g1", None, "Topic 4", "chapter", 4, "active"),
+        )
+        conn.execute(
+            """
+            INSERT INTO Topic(topicId, graphId, parentTopicId, topicName, topicType, sortOrder, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("t5", "g1", None, "Topic 5", "chapter", 5, "active"),
+        )
+        conn.execute(
+            """
+            INSERT INTO Topic(topicId, graphId, parentTopicId, topicName, topicType, sortOrder, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("t6", "g1", None, "Topic 6", "chapter", 6, "active"),
+        )
+    extend_learning_plan_topics(plan["plan_id"], ["t2", "t3", "t4", "t5", "t6"])
+    plans = list_learning_plans()
+    topic_ids = [item["topic_id"] for item in plans["items"][0]["focus_topics"]]
+    assert topic_ids == ["t1", "t2", "t3", "t4", "t5", "t6"]
 
 
 def test_context_and_append_record_flow(isolated_db):
@@ -40,5 +79,64 @@ def test_context_and_append_record_flow(isolated_db):
         },
     )
     assert append_result["commit_result"]["record_type"] == "quiz"
+    assert append_result["plan_delta_summary"]["plan_id"] == plan["plan_id"]
+    assert append_result["plan_delta_summary"]["plan_touched"] is True
     review_context = get_review_context(plan["plan_id"])
     assert "due_items" in review_context
+
+
+def test_review_context_includes_scope_and_candidate_scoring(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+    append_learning_record(
+        plan["plan_id"],
+        "quiz",
+        {
+            "concept_id": "c1",
+            "result": "incorrect",
+            "score": 30,
+            "difficulty_bucket": "medium",
+        },
+    )
+    context = get_review_context(plan["plan_id"], topic_id="t1")
+    assert context["scope"]["topic_ids"] == ["t1"]
+    assert "candidate_items" in context
+    assert "review_score_factors" in context
+    assert "c1" in context["review_score_factors"]
+    assert context["queue_policy"]["weights"]["overdue_score"] == 0.35
+
+
+def test_append_record_bumps_plan_updated_at_and_reorders_plans(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    p1 = create_learning_plan("g1", topic_id="t1")
+    p2 = create_learning_plan("g1", topic_id="t2")
+    assert p2["plan_id"] == p1["plan_id"]
+    assert p2["plan_reused"] is True
+    before = list_learning_plans()
+    assert len(before["items"]) == 1
+    assert before["items"][0]["plan_id"] == p1["plan_id"]
+
+    append_learning_record(
+        p1["plan_id"],
+        "review",
+        {
+            "concept_id": "c1",
+            "result": "correct",
+            "score": 90,
+            "difficulty_bucket": "easy",
+        },
+    )
+    after = list_learning_plans()
+    assert after["items"][0]["plan_id"] == p1["plan_id"]
+
+
+def test_create_plan_reuses_existing_graph_plan_and_extends_scope(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    created = create_learning_plan("g1", topic_id="t1")
+    reused = create_learning_plan("g1", topic_id="t2")
+    assert created["plan_reused"] is False
+    assert reused["plan_reused"] is True
+    assert reused["plan_id"] == created["plan_id"]
+
+    context = get_learning_context(created["plan_id"])
+    assert set(context["concept_scope"]["topic_ids"]) == {"t1", "t2"}

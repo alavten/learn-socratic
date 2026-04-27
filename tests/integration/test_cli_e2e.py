@@ -92,11 +92,48 @@ def test_cli_end_to_end_ingest_plan_prompt_record(isolated_db, tmp_path):
         ]
     )
     assert commit["commit_result"]["record_type"] == "learn"
+    assert commit["plan_delta_summary"]["plan_id"] == plan_id
+    assert commit["plan_delta_summary"]["plan_touched"] is True
     assert commit["state_delta_summary"]["mastery_level"] in {
         "Learning",
         "Proficient",
         "Mastered",
     }
+
+    commit_c2 = _run_cli(
+        [
+            "append-learning-record",
+            "--plan-id",
+            plan_id,
+            "--mode",
+            "quiz",
+            "--concept-id",
+            "c2",
+            "--result",
+            "incorrect",
+            "--score",
+            "35",
+            "--difficulty-bucket",
+            "hard",
+        ]
+    )
+    assert commit_c2["commit_result"]["concept_id"] == "c2"
+
+    review_prompt = _run_cli(
+        [
+            "get-review-prompt",
+            "--plan-id",
+            plan_id,
+            "--session-context-json",
+            '{"served_concept_ids":["c1"],"last_result":"correct","last_completed_concept_id":"c1"}',
+        ]
+    )
+    summary = review_prompt["context_summary"]
+    assert "session_queue" in summary
+    assert "next_session_context" in summary
+    current = summary["session_queue"]["current_item"]
+    if current:
+        assert current["concept_id"] != "c1"
 
 
 def test_cli_api_discovery_commands(isolated_db):
@@ -104,6 +141,7 @@ def test_cli_api_discovery_commands(isolated_db):
     names = {api["name"] for api in listed}
     assert "get_learning_prompt" in names
     assert "ingest_knowledge_graph" in names
+    assert "remove_knowledge_graph_entities" in names
 
     spec = _run_cli(["get-api-spec", "--api-name", "append_learning_record"])
     assert spec["name"] == "append_learning_record"

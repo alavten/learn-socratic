@@ -6,6 +6,7 @@ from scripts.orchestration.prompt_templates import build_prompt
 def test_build_learn_prompt_contains_goal_and_concept_focus():
     context = {
         "goal_summary": {"goal_type": "capability_growth"},
+        "concept_scope": {"topic_ids": ["t1"]},
         "concept_pack_brief": {
             "concepts": [{"canonical_name": f"Concept{i}"} for i in range(10)],
         },
@@ -18,6 +19,10 @@ def test_build_learn_prompt_contains_goal_and_concept_focus():
     assert "Concept8" not in prompt
     assert "Feynman loop" in prompt
     assert "Explain, Interpret, Apply" in prompt
+    assert "anchor concept" in prompt
+    assert "Do not assess a concept that was not explicitly taught" in prompt
+    assert "L1 recall" in prompt
+    assert "Scope" in prompt
 
 
 def test_build_quiz_prompt_contains_scope_and_history():
@@ -45,6 +50,10 @@ def test_build_review_prompt_contains_due_items_and_risk():
     assert "avg_forgetting_risk" in prompt
     assert "spacing-first order" in prompt
     assert "retrieval-first" in prompt
+    assert "detailed original-context explanation" in prompt
+    assert "provide the next question" in prompt
+    assert "`detailed_explanation`" in prompt
+    assert "`next_question`" in prompt
 
 
 def test_build_prompt_unsupported_mode_raises():

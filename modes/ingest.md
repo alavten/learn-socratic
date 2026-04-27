@@ -15,6 +15,8 @@
 
 - Recommended executable format:
   - `python scripts/cli.py ingest-knowledge-graph --graph-id g1 --payload-file ./payload.json`
+  - `python scripts/cli.py ingest-knowledge-graph --graph-id g1 --payload-file ./payload.json --sync-mode upsert_and_prune --prune-topic-ids t1,t2`
+  - `python scripts/cli.py remove-knowledge-graph-entities --graph-id g1 --payload-file ./remove.json`
   - `python scripts/cli.py list-knowledge-graphs`
   - `python scripts/cli.py get-knowledge-graph --graph-id g1 --concept-limit 20`
 
