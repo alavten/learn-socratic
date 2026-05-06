@@ -26,12 +26,9 @@ def _build_learn_prompt(context: dict[str, Any]) -> str:
         f"Scope: {scope}\n"
         f"Concept focus: {concept_names}\n"
         "Use Feynman loop (explain -> learner restates -> diagnose gap -> simplify).\n"
-        "Keep one concept cluster and one core check per turn.\n"
-        "Pick exactly one anchor concept for this turn from Concept focus and keep explanation/check/verdict on that same concept.\n"
+        "Keep one anchor concept and one core check per turn.\n"
         "Do not assess a concept that was not explicitly taught in this turn.\n"
-        "Use aligned depth ladder: L1 recall, L2 understand, L3 apply, L4 transfer.\n"
-        "The check question must stay at the same depth as explanation (or one level lower if learner is blocked).\n"
-        "When recommending quiz, hand off only the taught anchor concept(s) and the achieved depth level.\n"
+        "Use depth ladder: L1 recall, L2 understand, L3 apply, L4 transfer.\n"
         "Apply UBD evidence focus: Explain, Interpret, Apply.\n"
         "Explain clearly, ask one diagnostic question, and propose next step."
     )
@@ -44,13 +41,11 @@ def _build_quiz_prompt(context: dict[str, Any]) -> str:
         "You are a quiz generator and grader.\n"
         f"Scope: {scope}\n"
         f"Historical performance: {perf}\n"
-        "Two phases: ask question first, evaluate only after learner answer.\n"
-        "In question phase, do not reveal answer, rationale, or verdict.\n"
-        "Options must be plain text  lines; no markdown emphasis and no highlighted correct option.\n"
+        "Two phases: ask first, evaluate after learner answer.\n"
+        "In question phase do not reveal answer, rationale, or verdict.\n"
         "Use retrieval-first: ask before telling, evaluate second, explain third.\n"
         "Progress by SOLO levels: Uni -> Multi -> Relational -> Extended.\n"
-        "Tie each question to one UBD facet (Explain/Interpret/Apply/Perspective/Self-Knowledge).\n"
-        "Generate one question per turn with concise evidence-grounded feedback."
+        "Tie each question to one UBD facet and output one question per turn."
     )
 
 
@@ -61,18 +56,20 @@ def _build_review_prompt(context: dict[str, Any]) -> str:
     current_item = session_queue.get("current_item")
     next_item = session_queue.get("next_item")
     risk = context.get("forgetting_risk_summary", {})
+    due_concepts = [item.get("concept_id") for item in due_items[:2]]
+    queue_concepts = [item.get("concept_id") for item in queue_items[:2] if isinstance(item, dict)]
     return (
         "You are a spaced review coach.\n"
-        f"Due items: {due_items[:8]}\n"
-        f"Queue snapshot: {queue_items[:8]}\n"
-        f"Current concept: {current_item}\n"
-        f"Next concept: {next_item}\n"
+        f"Due concept_id list: {due_concepts}\n"
+        f"Queue concept_ids: {queue_concepts}\n"
+        f"Current concept_id: {current_item.get('concept_id') if isinstance(current_item, dict) else None}\n"
+        f"Next concept_id: {next_item.get('concept_id') if isinstance(next_item, dict) else None}\n"
         f"Risk summary: {risk}\n"
         "Use spacing-first order: overdue -> high forgetting risk -> weak points.\n"
-        "Advance by queue order and avoid repeating served concepts except one immediate retry on wrong answer.\n"
+        "Advance by queue order; avoid repeating served concepts except one immediate retry on wrong answer.\n"
         "Use retrieval-first recall prompts before corrections.\n"
-        "After each learner answer, always provide a detailed original-context explanation for the current question.\n"
-        "Then always provide the next question from queue progression.\n"
-        "Output contract: include fields `detailed_explanation` and `next_question` in every review turn.\n"
-        "Run targeted recall practice and suggest the next review window."
+        "After each answer provide a detailed original-context explanation.\n"
+        "Then provide the next question.\n"
+        "Output fields: `detailed_explanation` and `next_question`.\n"
+        "Suggest next review window."
     )

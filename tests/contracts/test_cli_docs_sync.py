@@ -2,7 +2,7 @@ import re
 import shlex
 from pathlib import Path
 
-from scripts import cli
+from scripts.cli import main as cli
 
 
 def _project_root() -> Path:
@@ -10,7 +10,7 @@ def _project_root() -> Path:
 
 
 def _extract_cli_commands(markdown: str) -> list[str]:
-    return re.findall(r"`python scripts/cli\.py ([^`]+)`", markdown)
+    return re.findall(r"`python -m scripts\.cli\.main ([^`]+)`", markdown)
 
 
 def _normalize_args(command_tail: str) -> list[str]:

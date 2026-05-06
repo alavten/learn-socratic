@@ -37,3 +37,19 @@ def test_modes_output_contract_has_summary_and_next_step():
         content = _read(root / name)
         assert "summary" in content
         assert "next_step" in content
+
+
+def test_shared_and_learn_require_discovery_snapshot_and_dual_tables():
+    root = _root() / "modes"
+    shared = _read(root / "shared.md")
+    learn = _read(root / "learn.md")
+
+    assert "discovery_snapshot" in shared
+    assert "knowledge_graphs_table" in shared
+    assert "pending_learning_plans_table" in shared
+    assert "choose **plan** or **graph** first" in shared
+
+    assert "discovery_snapshot.source = \"api_discovery\"" in learn
+    assert "KnowledgeGraphs" in learn
+    assert "PendingLearningPlans" in learn
+    assert "choose **plan or graph first**" in learn

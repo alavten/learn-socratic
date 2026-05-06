@@ -30,6 +30,7 @@ Applies to every session regardless of mode.
 - Keep responses concise and evidence-grounded.
 - Adapt difficulty based on latest learner performance.
 - Do not duplicate mode-specific steps here; follow `modes/*.md`.
+- Do not call write/mutation APIs without explicit user confirmation.
 
 ## Intent Matrix
 
@@ -48,6 +49,7 @@ Routing flow rules:
 1. If intent is missing, conflicting, or ambiguous, route to `shared` for one clarification turn and then re-route.
 2. In-session mode switching must return to this router first, then dispatch to the new target mode.
 3. If target mode file is unavailable or dispatch fails, return `summary` with failure reason and `next_step` to continue in `shared`.
+4. `shared` also handles recoverable execution failures and long-tail capability discovery, then must hand off back to one main mode (`ingest`/`learn`/`quiz`/`review`) when context is ready.
 
 ## Quick Start
 
@@ -59,19 +61,11 @@ Routing flow rules:
 ## CLI Hints
 
 - Example:
-  - `python scripts/cli.py get-learning-prompt --plan-id PLAN_ID --topic-id t1`
+  - `python -m scripts.cli.main get-mode-context --mode learn --plan-id PLAN_ID --topic-id t1`
 - `--mode=ingest|learn|quiz|review`
 - `--file=`
 - `--graph-id=`
 - `--payload-file=`
 - `--target=`
 - `--timebox=`
-
-## 踩坑经验
-
-（以下由 AI 在实际调用中自动积累，请勿手动删除）
-
-- **ingest-knowledge-graph / graph_type 值约束**：`graph.graph_type` 只能是 `'domain'`、`'module'`、`'view'` 三者之一，`'curriculum'` 等其他值会触发 CHECK 约束错误报错。查阅已有图谱：se-full-20260422 和 claude-code-full 均使用 `graph_type: "domain"`。
-- **ingest-knowledge-graph / 引用已存在概念**：若 relations 中的 from_concept_id / to_concept_id 引用了已在图谱中存在但不在当前 payload 中的概念，会报 "not found in payload concepts" 错误。解决方法：把被引用的已存在概念也加到 payload 的 concepts 列表中（至少包含 concept_id + canonical_name + definition 即可，API 会以 upsert 模式处理）。
-- **get-knowledge-graph / 返回字段**：`concept_briefs` 中每个对象包含 `concept_id`、`canonical_name`、`short_definition`、`difficulty`（而非 `difficulty_level`）；`topic_concepts` 包含 `topic_concept_id`、`topic_id`、`concept_id`、`role`、`rank`、`canonical_name`、`short_definition`、`difficulty`。
 

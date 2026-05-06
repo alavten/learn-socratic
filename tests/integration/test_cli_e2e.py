@@ -14,7 +14,7 @@ def _project_root() -> Path:
 def _run_cli(args: list[str]) -> dict | list:
     root = _project_root()
     result = subprocess.run(
-        [sys.executable, "scripts/cli.py", *args],
+        [sys.executable, "-m", "scripts.cli.main", *args],
         cwd=root,
         env=os.environ.copy(),
         check=True,
@@ -63,7 +63,9 @@ def test_cli_end_to_end_ingest_plan_prompt_record(isolated_db, tmp_path):
 
     learn_prompt = _run_cli(
         [
-            "get-learning-prompt",
+            "get-mode-context",
+            "--mode",
+            "learn",
             "--plan-id",
             plan_id,
             "--topic-id",
@@ -74,8 +76,8 @@ def test_cli_end_to_end_ingest_plan_prompt_record(isolated_db, tmp_path):
 
     commit = _run_cli(
         [
-            "append-learning-record",
-            "--plan-id",
+            "add-interaction-record",
+            "--context-id",
             plan_id,
             "--mode",
             "learn",
@@ -102,8 +104,8 @@ def test_cli_end_to_end_ingest_plan_prompt_record(isolated_db, tmp_path):
 
     commit_c2 = _run_cli(
         [
-            "append-learning-record",
-            "--plan-id",
+            "add-interaction-record",
+            "--context-id",
             plan_id,
             "--mode",
             "quiz",
@@ -121,7 +123,9 @@ def test_cli_end_to_end_ingest_plan_prompt_record(isolated_db, tmp_path):
 
     review_prompt = _run_cli(
         [
-            "get-review-prompt",
+            "get-mode-context",
+            "--mode",
+            "review",
             "--plan-id",
             plan_id,
             "--session-context-json",
@@ -139,10 +143,10 @@ def test_cli_end_to_end_ingest_plan_prompt_record(isolated_db, tmp_path):
 def test_cli_api_discovery_commands(isolated_db):
     listed = _run_cli(["list-apis"])
     names = {api["name"] for api in listed}
-    assert "get_learning_prompt" in names
+    assert "get_learn_context" in names
     assert "ingest_knowledge_graph" in names
     assert "remove_knowledge_graph_entities" in names
 
-    spec = _run_cli(["get-api-spec", "--api-name", "append_learning_record"])
-    assert spec["name"] == "append_learning_record"
+    spec = _run_cli(["get-api-spec", "--api-name", "add_interaction_record"])
+    assert spec["name"] == "add_interaction_record"
     assert "required" in spec["input_schema"]

@@ -13,23 +13,30 @@
 ## Command Invocation
 
 - Recommended executable format:
-  - `python scripts/cli.py get-learning-prompt --plan-id PLAN_ID --topic-id t1`
-  - `python scripts/cli.py append-learning-record --plan-id PLAN_ID --mode learn --concept-id c1 --result ok --score 85 --difficulty-bucket medium`
+  - `python -m scripts.cli.main get-mode-context --mode learn --plan-id PLAN_ID --topic-id t1`
+  - `python -m scripts.cli.main add-interaction-record --context-id PLAN_ID --mode learn --concept-id c1 --result ok --score 85 --difficulty-bucket medium`
 
 ## Runtime Execution Chain
 
-1. Preflight (once per session): `list_apis()` and `get_api_spec("get_learning_prompt")`.
-2. If `plan_id` missing:
-   - `list_knowledge_graphs()`
-   - `list_learning_plans()`
-   - analyze topic options + plan status and provide start recommendations
-   - ask user to choose where to start (graph/topic or existing plan)
-   - if user confirms, then `create_learning_plan(graph_id, topic_id?)` when needed
-3. Fetch learn prompt context after user selection:
-   - `get_learning_prompt(plan_id, topic_id?)`
-4. Run Socratic teaching interaction with returned `prompt_text`.
-5. Persist learning record for this turn:
-   - `append_learning_record(plan_id, mode="learn", record_payload)`
+1. Preflight (once per session): `get_api_spec("get_learn_context")`.
+2. If `plan_id` missing, run discovery and recommendation only:
+   - `list_knowledge_graphs()` (paginate until done when `has_more=true`)
+   - `list_learning_plans()` (paginate until done when `has_more=true`)
+   - render two independent markdown tables first:
+     - `KnowledgeGraphs`
+     - `PendingLearningPlans`
+   - include `discovery_snapshot.source = "api_discovery"` in output payload
+   - analyze topic options + plan status and provide ranked start recommendations
+3. Ask user to choose where to start (existing plan or graph/topic), then confirm:
+   - ask user to choose **plan or graph first**, then choose mode/topic details
+   - if user does not make an explicit choice, stay in recommendation mode
+   - do not auto-select an existing plan even if it has learning history
+   - if user explicitly confirms a new start, call `create_learning_plan(graph_id, topic_id?)` when needed
+4. Fetch learn prompt context after explicit user selection:
+   - `get_learn_context(plan_id, topic_id?)`
+5. Run Socratic teaching interaction with returned `prompt_text`.
+6. Persist learning record for this turn:
+   - `add_interaction_record(plan_id, mode="learn", record_payload)`
    - minimum: `record_payload={"concept_id": "...", "result": "ok|partial|blocked"}`
    - recommended: include `score`, `difficulty_bucket`, and `latency_ms` for later quiz/review scheduling
 
@@ -90,12 +97,12 @@
 
 1. If `plan_id` is missing, analyze available knowledge-graph topics and existing learning-plan status.
 2. Provide ranked start suggestions and ask user to choose a start point.
-3. Resolve scope from user choice, then call `get_learning_prompt(plan_id, topic_id?)`.
+3. Resolve scope from user choice, then call `get_learn_context(plan_id, topic_id?)`.
 4. Select one `anchor_concept_id` from context and set current depth level.
 5. Deliver explanation and ask one explicit learner restatement/check for that same anchor concept at matching depth.
 6. Diagnose outcome from learner restatement/check answer only.
 7. If ready for quiz, output a quiz handoff hint (`anchor_concept_id`, achieved depth, suggested first question style).
-8. Write `append_learning_record(..., mode='learn', ...)` using learner-answer-based outcome.
+8. Write `add_interaction_record(..., mode='learn', ...)` using learner-answer-based outcome.
 9. Return recommended next step.
 
 ## Output
@@ -108,6 +115,8 @@
 ## Retry / Fallback
 
 - If `plan_id` is missing and user does not choose a suggestion, keep recommendation mode and do not auto-create plan.
+- If discovery response is missing `discovery_snapshot` or either table, re-run discovery and re-render both tables before asking again.
+- Do not use memory-only inventory text (e.g., “根据记忆”) as substitute for this-turn discovery results.
 - If context retrieval fails, ask user for plan/topic confirmation.
 - If write fails, show response and ask for permission to retry record submission.
 

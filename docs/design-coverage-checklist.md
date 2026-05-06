@@ -26,8 +26,8 @@
 
 - [x] Orchestration self-description APIs: `list_apis`, `get_api_spec`.
 - [x] Knowledge graph APIs: list/get/ingest/get_concepts/get_concept_relations/get_concept_evidence.
-- [x] Learning APIs: list/create/extend/get_learning_context/get_quiz_context/get_review_context/append_learning_record.
-- [x] Prompt APIs: `get_learning_prompt`, `get_quiz_prompt`, `get_review_prompt`.
+- [x] Learning APIs: list/create/extend/get_learning_context/get_quiz_context/get_review_context/add_interaction_record.
+- [x] Prompt APIs: `get_learn_context`, `get_quiz_context`, `get_review_context`.
 - [x] End-to-end flows tested: ingest -> learn -> quiz -> review -> mode switch.
 
 ## Quality and Verification
@@ -41,4 +41,4 @@
 - [x] Runtime/API/mode documents use `snake_case` field names (`graph_id`, `plan_id`, `record_type`, etc.).
 - [x] `docs/data-model-design.md` keeps canonical model naming as designed (including existing camelCase attributes).
 - [x] Router and capability descriptions consistently include all four modes: `ingest / learn / quiz / review`.
-- [x] Terminology guard test exists: `tests/docs/test_docs_terminology.py`.
+- [x] Terminology guard test exists: `tests/contracts/test_docs_terminology.py`.

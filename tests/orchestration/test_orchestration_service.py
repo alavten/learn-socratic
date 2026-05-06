@@ -10,15 +10,21 @@ def test_api_self_description(isolated_db):
     assert "get_api_spec" in names
     spec = service.get_api_spec("create_learning_plan")
     assert "required" in spec["input_schema"]
+    assert "valid_payloads" in spec["examples"]
+    get_graph_spec = service.get_api_spec("get_knowledge_graph")
+    assert "output_schema" in get_graph_spec
+    assert "concept_briefs" in get_graph_spec["output_schema"]["properties"]
+    discovery_spec = service.get_api_spec("get_discovery_context")
+    assert discovery_spec["name"] == "get_discovery_context"
 
 
 def test_prompt_generation_and_record_commit(isolated_db):
     ingest_knowledge_graph("g1", sample_graph_payload())
     service = OrchestrationAppService()
     plan = service.create_learning_plan("g1", topic_id="t1")
-    learn_prompt = service.get_learning_prompt(plan["plan_id"], topic_id="t1")
+    learn_prompt = service.get_learn_context(plan["plan_id"], topic_id="t1")
     assert "prompt_text" in learn_prompt
-    commit = service.append_learning_record(
+    commit = service.add_interaction_record(
         plan["plan_id"],
         "learn",
         {"concept_id": "c1", "result": "ok", "score": 80, "difficulty_bucket": "easy"},
@@ -51,23 +57,23 @@ def test_review_prompt_builds_session_queue_and_skips_served_concept(isolated_db
     ingest_knowledge_graph("g1", sample_graph_payload())
     service = OrchestrationAppService()
     plan = service.create_learning_plan("g1")
-    service.append_learning_record(
+    service.add_interaction_record(
         plan["plan_id"],
         "quiz",
         {"concept_id": "c1", "result": "incorrect", "score": 25, "difficulty_bucket": "hard"},
     )
-    service.append_learning_record(
+    service.add_interaction_record(
         plan["plan_id"],
         "quiz",
         {"concept_id": "c2", "result": "incorrect", "score": 35, "difficulty_bucket": "hard"},
     )
 
-    first = service.get_review_prompt(plan["plan_id"])
+    first = service.get_review_context(plan["plan_id"])
     queue = first["context_summary"]["session_queue"]["items"]
     assert queue
     first_concept = queue[0]["concept_id"]
 
-    second = service.get_review_prompt(
+    second = service.get_review_context(
         plan["plan_id"],
         session_context={"served_concept_ids": [first_concept]},
     )
@@ -80,23 +86,42 @@ def test_review_prompt_without_session_context_skips_most_recent_reviewed_concep
     ingest_knowledge_graph("g1", sample_graph_payload())
     service = OrchestrationAppService()
     plan = service.create_learning_plan("g1")
-    service.append_learning_record(
+    service.add_interaction_record(
         plan["plan_id"],
         "quiz",
         {"concept_id": "c1", "result": "incorrect", "score": 20, "difficulty_bucket": "hard"},
     )
-    service.append_learning_record(
+    service.add_interaction_record(
         plan["plan_id"],
         "quiz",
         {"concept_id": "c2", "result": "incorrect", "score": 40, "difficulty_bucket": "hard"},
     )
-    service.append_learning_record(
+    service.add_interaction_record(
         plan["plan_id"],
         "review",
         {"concept_id": "c1", "result": "correct", "score": 88, "difficulty_bucket": "medium"},
     )
 
-    prompt = service.get_review_prompt(plan["plan_id"])
+    prompt = service.get_review_context(plan["plan_id"])
     current = prompt["context_summary"]["session_queue"]["current_item"]
     if current:
         assert current["concept_id"] != "c1"
+
+
+def test_get_discovery_context_returns_dual_tables_with_topic_content(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    service = OrchestrationAppService()
+    plan = service.create_learning_plan("g1", topic_id="t1")
+    service.add_interaction_record(
+        plan["plan_id"],
+        "learn",
+        {"concept_id": "c1", "result": "ok", "score": 80, "difficulty_bucket": "medium"},
+    )
+    payload = service.get_discovery_context(page_limit=10, max_pages=5)
+    assert payload["discovery_snapshot"]["source"] == "api_discovery"
+    assert "KnowledgeGraphs" in payload["display_markdown"]
+    assert "PendingLearningPlans" in payload["display_markdown"]
+    assert "主题内容" in payload["tables"]["knowledge_graphs_table"]
+    assert "主题内容" in payload["tables"]["pending_learning_plans_table"]
+    assert "已完成任务" in payload["tables"]["pending_learning_plans_table"]
+    assert "待完成任务" in payload["tables"]["pending_learning_plans_table"]

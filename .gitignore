@@ -4,11 +4,11 @@ __pycache__/
 *$py.class
 *.so
 
-# Learning logs (user data)
-.learning-logs/
+# Runtime artifacts (L4 state + execution outputs, never tracked)
 data/skill.sqlite3
 data/skill.sqlite3-wal
 data/skill.sqlite3-shm
+data/prompt-validation-runs/
 
 # Memory (working memory, auto-managed)
 .workbuddy/memory/
@@ -65,5 +65,4 @@ temp/
 *.pid
 .cache/
 .cursor/
-docs/acceptance/
 payloads

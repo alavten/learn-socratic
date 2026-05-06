@@ -13,22 +13,23 @@
 ## Command Invocation
 
 - Recommended executable format:
-  - `python scripts/cli.py get-quiz-prompt --plan-id PLAN_ID --topic-id t1`
-  - `python scripts/cli.py append-learning-record --plan-id PLAN_ID --mode quiz --concept-id c1 --result correct --score 78 --difficulty-bucket hard`
+  - `python -m scripts.cli.main get-mode-context --mode quiz --plan-id PLAN_ID --topic-id t1`
+  - `python -m scripts.cli.main add-interaction-record --context-id PLAN_ID --mode quiz --concept-id c1 --result correct --score 78 --difficulty-bucket hard`
 
 ## Runtime Execution Chain
 
-1. Preflight (once per session): `list_apis()` and `get_api_spec("get_quiz_prompt")`.
+1. Preflight (once per session): `get_api_spec("get_quiz_context")`.
 2. If `plan_id` missing:
    - `list_knowledge_graphs()`
    - `list_learning_plans()`
-   - `create_learning_plan(graph_id, topic_id?)`
+   - provide ranked plan/topic start options and ask user to choose
+   - only call `create_learning_plan(graph_id, topic_id?)` after explicit user confirmation
 3. Fetch quiz context:
-   - `get_quiz_prompt(plan_id, topic_id?)`
+   - `get_quiz_context(plan_id, topic_id?)`
 4. Generate questions and collect learner answers.
 5. Evaluate only learner answers first, then explain through model logic.
 6. Persist result:
-   - `append_learning_record(plan_id, mode="quiz", record_payload)`
+   - `add_interaction_record(plan_id, mode="quiz", record_payload)`
 
 ## Turn Contract
 
@@ -80,10 +81,10 @@
 
 ## Steps
 
-1. Resolve scope and call `get_quiz_prompt(plan_id, topic_id?)`.
+1. Resolve scope and call `get_quiz_context(plan_id, topic_id?)`.
 2. Generate question and collect explicit learner answer text first.
 3. Evaluate outcome from learner answer only, then provide explanation/correction.
-4. Write `append_learning_record(..., mode='quiz', ...)` from learner-answer-based verdict.
+4. Write `add_interaction_record(..., mode='quiz', ...)` from learner-answer-based verdict.
 5. Return feedback and targeted follow-up suggestions.
 
 ## Output
@@ -97,6 +98,7 @@
 
 - If quiz context is missing, request narrower topic or plan selection.
 - If scoring payload is incomplete, persist a partial record with a warning tag.
+- If `plan_id` is missing and user does not choose an option, stay in recommendation mode and do not auto-create plan.
 
 ## Minimal Record Payload
 

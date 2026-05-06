@@ -1,4 +1,4 @@
-"""Acceptance reporting helpers for tests/acceptance.
+"""Acceptance reporting helpers for prompt-validation support tests.
 
 This module is analysis-only:
 - allowed: metrics/statistics/consistency checks over existing evidence
@@ -125,12 +125,28 @@ def _shared_reroute_evidence(turn_evidence: list[dict[str, Any]], contracts: lis
         if turn.get("mode") != "shared":
             continue
         response = turn.get("response") if isinstance(turn.get("response"), dict) else {}
+        clarifying_text = " ".join(
+            [
+                str(response.get("clarification_question") or ""),
+                str(response.get("summary") or ""),
+                str(turn.get("assistant_prompt") or ""),
+                str(turn.get("assistant_response") or ""),
+            ]
+        ).lower()
+        has_snapshot = isinstance(response.get("discovery_snapshot"), dict) and (
+            response.get("discovery_snapshot", {}).get("source") == "api_discovery"
+        )
+        has_graph_table = bool(response.get("knowledge_graphs_table"))
+        has_plan_table = bool(response.get("pending_learning_plans_table"))
         evidence.append(
             {
                 "turn_index": idx,
                 "user_prompt": turn.get("user_prompt"),
                 "clarification_question": response.get("clarification_question"),
                 "resolved_mode": response.get("resolved_mode"),
+                "has_discovery_snapshot": has_snapshot,
+                "has_dual_tables": has_graph_table and has_plan_table,
+                "memory_based_phrase_detected": ("根据记忆" in clarifying_text) or ("按记忆" in clarifying_text),
                 "summary": contracts[idx - 1].get("summary"),
                 "next_step": contracts[idx - 1].get("next_step"),
             }

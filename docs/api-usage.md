@@ -8,18 +8,18 @@
 
 1. 资料入图：`ingest-knowledge-graph`
 2. 建立学习计划：`create-learning-plan`
-3. 学习讲解：`get-learning-prompt`
-4. 测验评估：`get-quiz-prompt`
-5. 复习强化：`get-review-prompt`
-6. 结果回写：`append-learning-record`
+3. 学习讲解：`get-mode-context --mode learn`
+4. 测验评估：`get-mode-context --mode quiz`
+5. 复习强化：`get-mode-context --mode review`
+6. 结果回写：`add-interaction-record`
 
 ### System Operator View（按运维操作）
 
 - API 发现：`list-apis`、`get-api-spec`
 - 图谱运维：`list-knowledge-graphs`、`get-knowledge-graph`、`ingest-knowledge-graph`、`remove-knowledge-graph-entities`
 - 学习运维：`list-learning-plans`、`create-learning-plan`、`extend-learning-plan-topics`
-- 交互运行：`get-learning-prompt` / `get-quiz-prompt` / `get-review-prompt`
-- 记录提交：`append-learning-record`
+- 交互运行：`get-mode-context --mode learn` / `get-mode-context --mode quiz` / `get-mode-context --mode review`
+- 记录提交：`add-interaction-record`
 
 补充说明：
 - 学习路径导航（用户视角）在 `README.md`。
@@ -40,7 +40,7 @@ service = create_app()
 ```
 
 ```bash
-python scripts/cli.py list-apis
+python -m scripts.cli.main list-apis
 ```
 
 ---
@@ -266,7 +266,7 @@ CLI `--payload-file` 约定：
 CLI 示例：
 
 ```bash
-python scripts/cli.py ingest-knowledge-graph --graph-id g1 --payload-file ./payload.json \
+python -m scripts.cli.main ingest-knowledge-graph --graph-id g1 --payload-file ./payload.json \
   --sync-mode upsert_and_prune --prune-topic-ids t1,t2 --force-delete
 ```
 
@@ -289,7 +289,7 @@ python scripts/cli.py ingest-knowledge-graph --graph-id g1 --payload-file ./payl
 **CLI**
 
 ```bash
-python scripts/cli.py remove-knowledge-graph-entities --graph-id g1 --payload-file ./remove.json --force-delete
+python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --payload-file ./remove.json --force-delete
 ```
 
 **依赖冲突响应（节选）**
@@ -427,9 +427,9 @@ python scripts/cli.py remove-knowledge-graph-entities --graph-id g1 --payload-fi
 
 ## 4) Prompt API
 
-### `get_learning_prompt(plan_id, topic_id=None)`
-### `get_quiz_prompt(plan_id, topic_id=None)`
-### `get_review_prompt(plan_id, topic_id=None, session_context=None)`
+### `get_learn_context(plan_id, topic_id=None)`
+### `get_quiz_context(plan_id, topic_id=None)`
+### `get_review_context(plan_id, topic_id=None, session_context=None)`
 
 以上 API 响应结构一致：
 
@@ -440,7 +440,7 @@ python scripts/cli.py remove-knowledge-graph-entities --graph-id g1 --payload-fi
 }
 ```
 
-`get_review_prompt` 支持会话级队列推进输入：
+`get_review_context` 支持会话级队列推进输入：
 
 ```json
 {
@@ -462,7 +462,7 @@ python scripts/cli.py remove-knowledge-graph-entities --graph-id g1 --payload-fi
 推荐 CLI（带会话推进上下文）：
 
 ```bash
-python scripts/cli.py get-review-prompt \
+python -m scripts.cli.main get-mode-context --mode review \
   --plan-id PLAN_ID \
   --topic-id t1 \
   --session-context-json '{"served_concept_ids":["c1"],"last_completed_concept_id":"c1","last_result":"correct"}'
@@ -472,7 +472,7 @@ python scripts/cli.py get-review-prompt \
 
 ## 5) 记录提交 API
 
-### `append_learning_record(plan_id, mode, record_payload)`
+### `add_interaction_record(plan_id, mode, record_payload)`
 
 `mode` 取值：`learn` / `quiz` / `review`
 
@@ -554,10 +554,10 @@ service = create_app()
 service.ingest_knowledge_graph("g1", sample_graph_payload())
 plan = service.create_learning_plan("g1", topic_id="t1")
 
-prompt = service.get_learning_prompt(plan["plan_id"], topic_id="t1")
+prompt = service.get_learn_context(plan["plan_id"], topic_id="t1")
 print(prompt["prompt_text"])
 
-result = service.append_learning_record(
+result = service.add_interaction_record(
     plan["plan_id"],
     "learn",
     {"concept_id": "c1", "result": "ok", "score": 80, "difficulty_bucket": "easy"},

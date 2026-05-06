@@ -31,7 +31,7 @@ def test_skill_runtime_routes_and_executes_contracts_with_real_materials(isolate
     assert "Feynman loop" in learn["content"]
     assert "summary" in learn and "next_step" in learn
 
-    runtime.service.append_learning_record(
+    runtime.service.add_interaction_record(
         plan_id,
         "learn",
         {"concept_id": payload["concepts"][0]["concept_id"], "result": "ok", "score": 82, "difficulty_bucket": "medium"},
@@ -43,7 +43,7 @@ def test_skill_runtime_routes_and_executes_contracts_with_real_materials(isolate
     assert "UBD facet" in quiz["questions_or_feedback"]
     assert "summary" in quiz and "next_step" in quiz
 
-    runtime.service.append_learning_record(
+    runtime.service.add_interaction_record(
         plan_id,
         "quiz",
         {"concept_id": payload["concepts"][1]["concept_id"], "result": "correct", "score": 88, "difficulty_bucket": "hard"},
@@ -54,7 +54,7 @@ def test_skill_runtime_routes_and_executes_contracts_with_real_materials(isolate
     assert "spacing-first order" in review["review_items_or_feedback"]
     assert "summary" in review and "next_step" in review
 
-    runtime.service.append_learning_record(
+    runtime.service.add_interaction_record(
         plan_id,
         "review",
         {"concept_id": payload["concepts"][0]["concept_id"], "result": "correct", "score": 90, "difficulty_bucket": "easy"},
@@ -63,4 +63,8 @@ def test_skill_runtime_routes_and_executes_contracts_with_real_materials(isolate
     shared_ambiguous = runtime.run_shared("不太确定怎么开始")
     assert shared_ambiguous["mode"] == "shared"
     assert shared_ambiguous["clarification_question"]
+    assert shared_ambiguous["discovery_snapshot"]["source"] == "api_discovery"
+    assert "主题内容" in shared_ambiguous["knowledge_graphs_table"]
+    assert "已完成任务" in shared_ambiguous["pending_learning_plans_table"]
+    assert "待完成任务" in shared_ambiguous["pending_learning_plans_table"]
     assert "summary" in shared_ambiguous and "next_step" in shared_ambiguous

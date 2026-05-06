@@ -83,8 +83,8 @@ def test_plan_and_prompt_stay_with_selected_graph_scope(isolated_db):
     plan_a = service.create_learning_plan("g-a", topic_id="t1-a")
     plan_b = service.create_learning_plan("g-b", topic_id="t1-b")
 
-    prompt_a = service.get_learning_prompt(plan_a["plan_id"], topic_id="t1-a")
-    prompt_b = service.get_learning_prompt(plan_b["plan_id"], topic_id="t1-b")
+    prompt_a = service.get_learn_context(plan_a["plan_id"], topic_id="t1-a")
+    prompt_b = service.get_learn_context(plan_b["plan_id"], topic_id="t1-b")
 
     text_a = prompt_a["prompt_text"]
     text_b = prompt_b["prompt_text"]

@@ -1,5 +1,7 @@
+import uuid
+
 from scripts.learning.api import (
-    append_learning_record,
+    add_interaction_record,
     create_learning_plan,
     extend_learning_plan_topics,
     get_learning_context,
@@ -58,6 +60,41 @@ def test_list_plans_returns_all_focus_topics(isolated_db):
     plans = list_learning_plans()
     topic_ids = [item["topic_id"] for item in plans["items"][0]["focus_topics"]]
     assert topic_ids == ["t1", "t2", "t3", "t4", "t5", "t6"]
+    assert "topic_name" in plans["items"][0]["focus_topics"][0]
+    assert plans["items"][0]["topic_content"]
+
+
+def test_list_plans_returns_completed_and_pending_task_counts(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+    with transaction() as conn:
+        conn.execute(
+            """
+            INSERT INTO LearningTask(
+                learningTaskId, learningPlanId, conceptId, taskType, reasonType, strategy,
+                priorityScore, dueAt, generatedAt, batchId, status, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                plan["plan_id"],
+                "c1",
+                "review",
+                "manual",
+                "test",
+                0.5,
+                None,
+                "2026-01-01T00:00:00+00:00",
+                None,
+                "completed",
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+            ),
+        )
+    plans = list_learning_plans()
+    item = plans["items"][0]
+    assert item["completed_tasks"] >= 1
+    assert item["pending_tasks"] >= 0
 
 
 def test_context_and_append_record_flow(isolated_db):
@@ -67,7 +104,7 @@ def test_context_and_append_record_flow(isolated_db):
     assert "concept_pack_brief" in learning_context
     quiz_context = get_quiz_context(plan["plan_id"], topic_id="t1")
     assert "quiz_scope" in quiz_context
-    append_result = append_learning_record(
+    append_result = add_interaction_record(
         plan["plan_id"],
         "quiz",
         {
@@ -88,7 +125,7 @@ def test_context_and_append_record_flow(isolated_db):
 def test_review_context_includes_scope_and_candidate_scoring(isolated_db):
     ingest_knowledge_graph("g1", sample_graph_payload())
     plan = create_learning_plan("g1", topic_id="t1")
-    append_learning_record(
+    add_interaction_record(
         plan["plan_id"],
         "quiz",
         {
@@ -116,7 +153,7 @@ def test_append_record_bumps_plan_updated_at_and_reorders_plans(isolated_db):
     assert len(before["items"]) == 1
     assert before["items"][0]["plan_id"] == p1["plan_id"]
 
-    append_learning_record(
+    add_interaction_record(
         p1["plan_id"],
         "review",
         {

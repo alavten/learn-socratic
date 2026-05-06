@@ -1,6 +1,6 @@
 import json
 
-from scripts import cli
+from scripts.cli import main as cli
 
 
 class FakeService:
@@ -17,9 +17,9 @@ class FakeService:
         )
         return {"ok": True}
 
-    def append_learning_record(self, plan_id, mode, record_payload):
+    def add_interaction_record(self, plan_id, mode, record_payload):
         self.calls.append(
-            ("append_learning_record", {"plan_id": plan_id, "mode": mode, "record_payload": record_payload})
+            ("add_interaction_record", {"plan_id": plan_id, "mode": mode, "record_payload": record_payload})
         )
         return {"ok": True}
 
@@ -41,10 +41,10 @@ class FakeService:
         )
         return {"ok": True}
 
-    def get_review_prompt(self, plan_id, topic_id=None, session_context=None):
+    def get_review_context(self, plan_id, topic_id=None, session_context=None):
         self.calls.append(
             (
-                "get_review_prompt",
+                "get_review_context",
                 {"plan_id": plan_id, "topic_id": topic_id, "session_context": session_context},
             )
         )
@@ -100,8 +100,8 @@ def test_cli_append_record_optional_fields(monkeypatch):
         "sys.argv",
         [
             "cli.py",
-            "append-learning-record",
-            "--plan-id",
+            "add-interaction-record",
+            "--context-id",
             "p1",
             "--mode",
             "quiz",
@@ -197,7 +197,9 @@ def test_cli_review_prompt_supports_session_context_json(monkeypatch):
         "sys.argv",
         [
             "cli.py",
-            "get-review-prompt",
+            "get-mode-context",
+            "--mode",
+            "review",
             "--plan-id",
             "p1",
             "--topic-id",
@@ -210,5 +212,5 @@ def test_cli_review_prompt_supports_session_context_json(monkeypatch):
     cli.main()
 
     assert outputs == [{"ok": True}]
-    assert service.calls[0][0] == "get_review_prompt"
+    assert service.calls[0][0] == "get_review_context"
     assert service.calls[0][1]["session_context"]["served_concept_ids"] == ["c1"]

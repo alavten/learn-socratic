@@ -78,7 +78,7 @@ class SkillRuntime:
         return created["plan_id"]
 
     def run_learn(self, plan_id: str, topic_id: str | None = None) -> dict[str, Any]:
-        response = self.service.get_learning_prompt(plan_id=plan_id, topic_id=topic_id)
+        response = self.service.get_learn_context(plan_id=plan_id, topic_id=topic_id)
         return {
             "mode": "learn",
             "content": response["prompt_text"],
@@ -87,7 +87,7 @@ class SkillRuntime:
         }
 
     def run_quiz(self, plan_id: str, topic_id: str | None = None) -> dict[str, Any]:
-        response = self.service.get_quiz_prompt(plan_id=plan_id, topic_id=topic_id)
+        response = self.service.get_quiz_context(plan_id=plan_id, topic_id=topic_id)
         return {
             "mode": "quiz",
             "questions_or_feedback": response["prompt_text"],
@@ -96,7 +96,7 @@ class SkillRuntime:
         }
 
     def run_review(self, plan_id: str, topic_id: str | None = None) -> dict[str, Any]:
-        response = self.service.get_review_prompt(plan_id=plan_id, topic_id=topic_id)
+        response = self.service.get_review_context(plan_id=plan_id, topic_id=topic_id)
         return {
             "mode": "review",
             "review_items_or_feedback": response["prompt_text"],
@@ -106,13 +106,20 @@ class SkillRuntime:
 
     def run_shared(self, user_input: str, last_mode: str | None = None) -> dict[str, Any]:
         resolved = self.route_mode(user_input=user_input, last_mode=last_mode)
+        discovery = self.service.get_discovery_context(page_limit=20, max_pages=10)
         if resolved == "shared":
             return {
                 "mode": "shared",
-                "clarification_question": "你想继续哪种模式：ingest、learn、quiz 还是 review？",
+                "clarification_question": (
+                    "请先选择一个已有计划（plan）或知识图谱（graph）作为起点；"
+                    "若选择 graph，我会继续让你选主题并创建计划。"
+                ),
                 "resolved_mode": None,
                 "summary": "intent unclear, one clarification needed",
-                "next_step": "ask_user_to_choose_ingest_learn_quiz_review",
+                "next_step": "ask_user_to_choose_plan_or_graph_from_tables",
+                "discovery_snapshot": discovery["discovery_snapshot"],
+                "knowledge_graphs_table": discovery["tables"]["knowledge_graphs_table"],
+                "pending_learning_plans_table": discovery["tables"]["pending_learning_plans_table"],
             }
         return {
             "mode": "shared",
@@ -120,4 +127,5 @@ class SkillRuntime:
             "resolved_mode": resolved,
             "summary": f"intent resolved to {resolved}",
             "next_step": f"route_to_{resolved}",
+            "discovery_snapshot": discovery["discovery_snapshot"],
         }

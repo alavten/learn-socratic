@@ -14,7 +14,7 @@ def _project_root() -> Path:
 def _run_cli(args: list[str]) -> dict | list:
     root = _project_root()
     result = subprocess.run(
-        [sys.executable, "scripts/cli.py", *args],
+        [sys.executable, "-m", "scripts.cli.main", *args],
         cwd=root,
         env=os.environ.copy(),
         check=True,
@@ -54,7 +54,7 @@ def test_real_flow_with_software_engineering_materials(isolated_db, tmp_path):
     created = _run_cli(["create-learning-plan", "--graph-id", "se-real"])
     plan_id = created["plan_id"]
 
-    learn_prompt = _run_cli(["get-learning-prompt", "--plan-id", plan_id])
+    learn_prompt = _run_cli(["get-mode-context", "--mode", "learn", "--plan-id", plan_id])
     prompt_text = learn_prompt["prompt_text"]
     assert "Feynman loop" in prompt_text
     assert "Explain, Interpret, Apply" in prompt_text
@@ -62,8 +62,8 @@ def test_real_flow_with_software_engineering_materials(isolated_db, tmp_path):
     first_concept = payload["concepts"][0]["concept_id"]
     learn_commit = _run_cli(
         [
-            "append-learning-record",
-            "--plan-id",
+            "add-interaction-record",
+            "--context-id",
             plan_id,
             "--mode",
             "learn",
@@ -79,7 +79,7 @@ def test_real_flow_with_software_engineering_materials(isolated_db, tmp_path):
     )
     assert learn_commit["commit_result"]["record_type"] == "learn"
 
-    quiz_prompt = _run_cli(["get-quiz-prompt", "--plan-id", plan_id])
+    quiz_prompt = _run_cli(["get-mode-context", "--mode", "quiz", "--plan-id", plan_id])
     quiz_text = quiz_prompt["prompt_text"]
     assert "SOLO levels" in quiz_text
     assert "retrieval-first" in quiz_text
@@ -87,8 +87,8 @@ def test_real_flow_with_software_engineering_materials(isolated_db, tmp_path):
     second_concept = payload["concepts"][1]["concept_id"]
     quiz_commit = _run_cli(
         [
-            "append-learning-record",
-            "--plan-id",
+            "add-interaction-record",
+            "--context-id",
             plan_id,
             "--mode",
             "quiz",
@@ -104,15 +104,15 @@ def test_real_flow_with_software_engineering_materials(isolated_db, tmp_path):
     )
     assert quiz_commit["commit_result"]["record_type"] == "quiz"
 
-    review_prompt = _run_cli(["get-review-prompt", "--plan-id", plan_id])
+    review_prompt = _run_cli(["get-mode-context", "--mode", "review", "--plan-id", plan_id])
     review_text = review_prompt["prompt_text"]
     assert "spacing-first order" in review_text
     assert review_prompt["context_summary"]["due_items"]
 
     review_commit = _run_cli(
         [
-            "append-learning-record",
-            "--plan-id",
+            "add-interaction-record",
+            "--context-id",
             plan_id,
             "--mode",
             "review",

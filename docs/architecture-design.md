@@ -162,7 +162,7 @@ sequenceDiagram
     Orchestrator->>Learning: create_learning_plan(graph_id, topic_id)
     Learning-->>Orchestrator: plan_id
   end
-  Agent->>Orchestrator: get_learning_prompt(plan_id, topic_id)
+  Agent->>Orchestrator: get_learn_context(plan_id, topic_id)
   Orchestrator->>Learning: get_learning_context(plan_id, topic_id)
   Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
   Learning->>KG: get_concept_relations(graph_id, concept_scope, depth=1)
@@ -172,8 +172,8 @@ sequenceDiagram
   Orchestrator-->>Agent: learning_context
   Agent->>LLM: 基于上下文生成讲解与追问
   LLM-->>Agent: 教学响应
-  Agent->>Orchestrator: append_learning_record(plan_id, mode=learn, record_payload)
-  Orchestrator->>Learning: append_learning_record(plan_id, learn, record_payload)
+  Agent->>Orchestrator: add_interaction_record(plan_id, mode=learn, record_payload)
+  Orchestrator->>Learning: add_interaction_record(plan_id, learn, record_payload)
   Learning-->>Orchestrator: commit_result
   Orchestrator-->>Agent: commit_result
   Agent-->>User: 输出下一步学习路径
@@ -191,7 +191,7 @@ sequenceDiagram
   participant Learning as 学习域服务
 
   User->>Agent: 发起测验
-  Agent->>Orchestrator: get_quiz_prompt(plan_id, topic_id)
+  Agent->>Orchestrator: get_quiz_context(plan_id, topic_id)
   Orchestrator->>Learning: get_quiz_context(plan_id, topic_id)
   Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
   Learning->>KG: get_concept_relations(graph_id, concept_scope, depth=1)
@@ -205,8 +205,8 @@ sequenceDiagram
   User-->>Agent: 返回答案
   Agent->>LLM: 判分与讲评
   LLM-->>Agent: score/latencyMs/讲评
-  Agent->>Orchestrator: append_learning_record(plan_id, mode=quiz, record_payload)
-  Orchestrator->>Learning: append_learning_record(plan_id, quiz, record_payload)
+  Agent->>Orchestrator: add_interaction_record(plan_id, mode=quiz, record_payload)
+  Orchestrator->>Learning: add_interaction_record(plan_id, quiz, record_payload)
   Learning-->>Orchestrator: commit_result
   Orchestrator-->>Agent: 测验记录提交结果
   Agent-->>User: 解释结果并给出后续动作
@@ -224,7 +224,7 @@ sequenceDiagram
   participant Learning as 学习域服务
 
   User->>Agent: 发起复习
-  Agent->>Orchestrator: get_review_prompt(plan_id, topic_id, session_context)
+  Agent->>Orchestrator: get_review_context(plan_id, topic_id, session_context)
   Orchestrator->>Learning: get_review_context(plan_id, topic_id)
   Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
   Learning->>KG: get_concept_relations(graph_id, concept_scope, depth=1)
@@ -239,8 +239,8 @@ sequenceDiagram
     LLM-->>Agent: 复习交互内容
     Agent->>Agent: 聚合本轮复习交互结果
   end
-  Agent->>Orchestrator: append_learning_record(plan_id, mode=review, record_payload)
-  Orchestrator->>Learning: append_learning_record(plan_id, review, record_payload)
+  Agent->>Orchestrator: add_interaction_record(plan_id, mode=review, record_payload)
+  Orchestrator->>Learning: add_interaction_record(plan_id, review, record_payload)
   Learning-->>Orchestrator: commit_result
   Orchestrator-->>Agent: 复习记录提交结果
   Agent-->>User: 当前反馈 + 下一题(队列下一概念)
@@ -266,13 +266,13 @@ sequenceDiagram
   Agent->>Agent: 确认 target_mode + target_plan/topic
   loop 任一模式完成一次交互
     alt target_mode = learn
-      Agent->>Orchestrator: get_learning_prompt(plan_id, topic_id)
+      Agent->>Orchestrator: get_learn_context(plan_id, topic_id)
       Orchestrator->>Learning: get_learning_context(plan_id, topic_id)
     else target_mode = quiz
-      Agent->>Orchestrator: get_quiz_prompt(plan_id, topic_id)
+      Agent->>Orchestrator: get_quiz_context(plan_id, topic_id)
       Orchestrator->>Learning: get_quiz_context(plan_id, topic_id)
     else target_mode = review
-      Agent->>Orchestrator: get_review_prompt(plan_id, topic_id)
+      Agent->>Orchestrator: get_review_context(plan_id, topic_id)
       Orchestrator->>Learning: get_review_context(plan_id, topic_id)
     end
     Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
@@ -284,8 +284,8 @@ sequenceDiagram
     Agent->>LLM: 生成响应/评估建议
     LLM-->>Agent: 候选输出
     Agent->>Agent: 执行护栏检查(安全/事实/格式)
-    Agent->>Orchestrator: append_learning_record(plan_id, mode, record_payload)
-    Orchestrator->>Learning: append_learning_record(plan_id, mode, record_payload)
+    Agent->>Orchestrator: add_interaction_record(plan_id, mode, record_payload)
+    Orchestrator->>Learning: add_interaction_record(plan_id, mode, record_payload)
     Learning->>Foundation: 通过 DB 适配持久化记录
     Learning->>Foundation: 记录流程日志
     Learning-->>Orchestrator: commit_result
@@ -338,7 +338,7 @@ doc-socratic-learning-optimized/
 │  │  ├─ validate.py                          # 录入时规则校验
 │  │  └─ store.py                             # 图谱存储访问
 │  ├─ learning/                               # L4 module-first: 学习模块
-│  │  ├─ api.py                               # list_learning_plans/create_learning_plan/extend_learning_plan_topics/get_*_context/append_learning_record
+│  │  ├─ api.py                               # list_learning_plans/create_learning_plan/extend_learning_plan_topics/get_*_context/add_interaction_record
 │  │  ├─ session.py                           # LearningSession/LearningRecord
 │  │  ├─ state.py                             # LearnerConceptState 更新
 │  │  └─ tasking.py                           # LearningTask 重排
@@ -380,7 +380,7 @@ doc-socratic-learning-optimized/
     - 不定义 learn/quiz/review 的具体教学步骤
     - 不强制各模式统一细节输出格式与话术模板
     - 不承载模式特有判分/讲评/复习策略
-    - 不直接触发业务状态写入（如 `append_learning_record`），仅负责澄清与分流建议
+    - 不直接触发业务状态写入（如 `add_interaction_record`），仅负责澄清与分流建议
   - **`shared.md` 最小化约束**：
     - 进入条件：仅当意图冲突、上下文缺失、或路由失败时进入
     - 退出条件：必须在一次澄清后返回明确模式，避免常驻在 shared 流程
@@ -421,8 +421,8 @@ sequenceDiagram
   Orchestrator-->>Agent: prompt_text + context_summary
   Agent->>User: 发起讲解/提问/测验/复习交互
   User-->>Agent: 交互结果
-  Agent->>Orchestrator: append_learning_record(plan_id, mode, record_payload)
-  Orchestrator->>BizModules: append_learning_record(plan_id, mode, record_payload)
+  Agent->>Orchestrator: add_interaction_record(plan_id, mode, record_payload)
+  Orchestrator->>BizModules: add_interaction_record(plan_id, mode, record_payload)
   BizModules-->>Orchestrator: commit_result
   Orchestrator-->>Agent: response_payload
   Agent-->>User: 输出结果
@@ -443,10 +443,10 @@ sequenceDiagram
   6. `list_learning_plans()`：返回当前上下文可用的学习计划列表。
   7. `create_learning_plan(graph_id, topic_id=None)`：基于选定图谱创建学习计划并返回 `plan_id`；可选 `topic_id` 用于限定初始学习范围。
   8. `extend_learning_plan_topics(plan_id, topic_ids, reason=None)`：按学习进展向既有计划增量加入主题范围，返回新增结果与范围摘要。
-  9. `get_learning_prompt(plan_id, topic_id=None)`：内部调用 `learning.get_learning_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回学习提示词文本；可选 `topic_id` 用于聚焦当前学习主题。
-  10. `get_quiz_prompt(plan_id, topic_id=None)`：内部调用 `learning.get_quiz_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回测验提示词文本；可选 `topic_id` 用于限定测验主题范围。
-  11. `get_review_prompt(plan_id, topic_id=None, session_context=None)`：内部调用 `learning.get_review_context(...)` 拉取结构化上下文，结合 `session_context` 计算 `session_queue`（当前题/下一题/已服务概念），并经 `prompt_templates` 封装后返回复习提示词文本。
-  12. `append_learning_record(plan_id, mode, record_payload)`：写入学习记录并返回提交结果。
+  9. `get_learn_context(plan_id, topic_id=None)`：内部调用 `learning.get_learning_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回学习提示词文本；可选 `topic_id` 用于聚焦当前学习主题。
+  10. `get_quiz_context(plan_id, topic_id=None)`：内部调用 `learning.get_quiz_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回测验提示词文本；可选 `topic_id` 用于限定测验主题范围。
+  11. `get_review_context(plan_id, topic_id=None, session_context=None)`：内部调用 `learning.get_review_context(...)` 拉取结构化上下文，结合 `session_context` 计算 `session_queue`（当前题/下一题/已服务概念），并经 `prompt_templates` 封装后返回复习提示词文本。
+  12. `add_interaction_record(plan_id, mode, record_payload)`：写入学习记录并返回提交结果。
 - **边界**：
   - 仅通过 L4 模块 API 访问业务数据，不直接操作存储。
   - 不直接承担模型推理调用；模型调用由 AI Agent 或上层执行环境负责。
@@ -515,7 +515,7 @@ sequenceDiagram
   - 默认返回：`due_items`、`forgetting_risk_summary`、`priority_reasons`、`candidate_items`、`review_score_factors`、`queue_policy`、`scope`、`constraints`。
   - 按需扩展：`detail.concept_refresh_brief`。
   - 不建议返回：全量历史记录流。
-  7. `append_learning_record(plan_id, mode, record_payload)`
+  7. `add_interaction_record(plan_id, mode, record_payload)`
   - 默认返回：`commit_result`、`state_delta_summary`、`task_delta_summary`。
   - 按需扩展：`detail.updated_tasks`（必要时）。
   - 不建议返回：更新后的全量 `LearnerConceptState/LearningTask`。

@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# Support direct execution: `python scripts/cli.py ...`
-_ROOT = Path(__file__).resolve().parents[1]
+# Support direct execution: `python -m scripts.cli.main ...` or `python scripts/cli/main.py ...`
+_ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
@@ -95,24 +95,17 @@ def _parser() -> argparse.ArgumentParser:
     )
     extend_plan.add_argument("--reason")
 
-    learn_prompt = sub.add_parser("get-learning-prompt", help="Get learning prompt")
-    learn_prompt.add_argument("--plan-id", required=True)
-    learn_prompt.add_argument("--topic-id")
-
-    quiz_prompt = sub.add_parser("get-quiz-prompt", help="Get quiz prompt")
-    quiz_prompt.add_argument("--plan-id", required=True)
-    quiz_prompt.add_argument("--topic-id")
-
-    review_prompt = sub.add_parser("get-review-prompt", help="Get review prompt")
-    review_prompt.add_argument("--plan-id", required=True)
-    review_prompt.add_argument("--topic-id")
-    review_prompt.add_argument(
+    mode_context = sub.add_parser("get-mode-context", help="Get mode context prompt")
+    mode_context.add_argument("--mode", choices=["learn", "quiz", "review"], required=True)
+    mode_context.add_argument("--plan-id", required=True)
+    mode_context.add_argument("--topic-id")
+    mode_context.add_argument(
         "--session-context-json",
         help="Optional JSON string for review session state (served_concept_ids/last_result/etc.)",
     )
 
-    append_record = sub.add_parser("append-learning-record", help="Append a learning record")
-    append_record.add_argument("--plan-id", required=True)
+    append_record = sub.add_parser("add-interaction-record", help="Add an interaction record")
+    append_record.add_argument("--context-id", required=True, help="Learning plan id")
     append_record.add_argument("--mode", choices=["learn", "quiz", "review"], required=True)
     append_record.add_argument("--concept-id", required=True)
     append_record.add_argument("--result", default="ok")
@@ -192,23 +185,23 @@ def main() -> None:
             )
         )
         return
-    if args.command == "get-learning-prompt":
-        _print_json(service.get_learning_prompt(plan_id=args.plan_id, topic_id=args.topic_id))
-        return
-    if args.command == "get-quiz-prompt":
-        _print_json(service.get_quiz_prompt(plan_id=args.plan_id, topic_id=args.topic_id))
-        return
-    if args.command == "get-review-prompt":
+    if args.command == "get-mode-context":
         session_context = json.loads(args.session_context_json) if args.session_context_json else None
+        if args.mode == "learn":
+            _print_json(service.get_learn_context(plan_id=args.plan_id, topic_id=args.topic_id))
+            return
+        if args.mode == "quiz":
+            _print_json(service.get_quiz_context(plan_id=args.plan_id, topic_id=args.topic_id))
+            return
         _print_json(
-            service.get_review_prompt(
+            service.get_review_context(
                 plan_id=args.plan_id,
                 topic_id=args.topic_id,
                 session_context=session_context,
             )
         )
         return
-    if args.command == "append-learning-record":
+    if args.command == "add-interaction-record":
         record_payload: dict[str, Any] = {
             "concept_id": args.concept_id,
             "result": args.result,
@@ -220,8 +213,8 @@ def main() -> None:
         if args.latency_ms is not None:
             record_payload["latency_ms"] = args.latency_ms
         _print_json(
-            service.append_learning_record(
-                plan_id=args.plan_id,
+            service.add_interaction_record(
+                plan_id=args.context_id,
                 mode=args.mode,
                 record_payload=record_payload,
             )

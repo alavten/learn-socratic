@@ -14,6 +14,8 @@ def test_ingest_and_list_graphs(isolated_db):
     assert result["validation_summary"]["ok"] is True
     graphs = list_knowledge_graphs()
     assert graphs["items"][0]["graph_id"] == "g1"
+    assert "topic_content" in graphs["items"][0]
+    assert graphs["items"][0]["topic_content"]
 
 
 def test_get_graph_and_concept_queries(isolated_db):

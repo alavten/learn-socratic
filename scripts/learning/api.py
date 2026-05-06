@@ -8,7 +8,7 @@ from typing import Any
 
 from scripts.foundation.storage import paginate, query_all, query_one, transaction
 from scripts.knowledge_graph import api as kg_api
-from scripts.learning.session import append_learning_record as append_record_impl
+from scripts.learning.session import add_interaction_record as append_record_impl
 from scripts.learning.state import update_state_from_record
 from scripts.learning.tasking import upsert_task_for_state
 
@@ -48,6 +48,12 @@ def list_learning_plans(limit: int = 20, cursor: str | None = None) -> dict[str,
                 FROM LearningTask lt
                 WHERE lt.learningPlanId = lp.learningPlanId AND lt.status = 'pending'
             ) AS pending_tasks
+            ,
+            (
+                SELECT COUNT(*)
+                FROM LearningTask lt
+                WHERE lt.learningPlanId = lp.learningPlanId AND lt.status IN ('completed', 'done')
+            ) AS completed_tasks
         FROM LearningPlan lp
         ORDER BY lp.updatedAt DESC
         LIMIT ? OFFSET ?
@@ -57,16 +63,22 @@ def list_learning_plans(limit: int = 20, cursor: str | None = None) -> dict[str,
     has_more = len(rows) > page_limit
     visible = rows[:page_limit]
     for row in visible:
-        row["progress"] = {"pending_tasks": row["pending_tasks"]}
+        row["progress"] = {
+            "completed_tasks": row["completed_tasks"],
+            "pending_tasks": row["pending_tasks"],
+        }
         row["focus_topics"] = query_all(
             """
-            SELECT topicId AS topic_id
+            SELECT t.topicId AS topic_id, t.topicName AS topic_name
             FROM LearningPlanTopic
+            JOIN Topic t ON t.topicId = LearningPlanTopic.topicId
             WHERE learningPlanId = ?
-            ORDER BY createdAt ASC
+            ORDER BY LearningPlanTopic.createdAt ASC
             """,
             (row["plan_id"],),
         )
+        topic_names = [item["topic_name"] for item in row["focus_topics"][:3] if item.get("topic_name")]
+        row["topic_content"] = "；".join(topic_names) if topic_names else "（暂无主题摘要）"
     return {
         "items": visible,
         "has_more": has_more,
@@ -609,7 +621,7 @@ def cleanup_learning_refs_for_graph_entity_removal(
     return summary
 
 
-def append_learning_record(
+def add_interaction_record(
     plan_id: str,
     mode: str,
     record_payload: dict[str, Any],

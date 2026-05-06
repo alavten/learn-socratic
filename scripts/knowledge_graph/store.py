@@ -28,6 +28,27 @@ def list_graphs(limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
     has_more = len(rows) > page_limit
     visible = rows[:page_limit]
     next_cursor = str(offset + page_limit) if has_more else None
+    graph_ids = [row["graph_id"] for row in visible]
+    topic_preview_by_graph: dict[str, list[str]] = {}
+    if graph_ids:
+        placeholders = ",".join("?" for _ in graph_ids)
+        topic_rows = query_all(
+            f"""
+            SELECT graphId AS graph_id, topicName AS topic_name
+            FROM Topic
+            WHERE graphId IN ({placeholders})
+            ORDER BY sortOrder ASC, topicId ASC
+            """,
+            tuple(graph_ids),
+        )
+        for topic_row in topic_rows:
+            topic_preview_by_graph.setdefault(topic_row["graph_id"], [])
+            names = topic_preview_by_graph[topic_row["graph_id"]]
+            if len(names) < 3:
+                names.append(topic_row["topic_name"])
+    for row in visible:
+        topics = topic_preview_by_graph.get(row["graph_id"], [])
+        row["topic_content"] = "；".join(topics) if topics else "（暂无主题摘要）"
     return {"items": visible, "has_more": has_more, "next_cursor": next_cursor}
 
 

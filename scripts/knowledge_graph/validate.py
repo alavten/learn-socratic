@@ -11,6 +11,7 @@ ALLOWED_RELATION_TYPES = {
     "applied_in",
     "related_to",
 }
+ALLOWED_GRAPH_TYPES = {"domain", "module", "view"}
 
 
 def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -55,6 +56,12 @@ def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
         for field in ["graph_type", "graph_name", "schema_version", "release_tag"]:
             if not graph.get(field):
                 errors.append(f"payload.graph missing {field}")
+        graph_type = graph.get("graph_type")
+        if graph_type and graph_type not in ALLOWED_GRAPH_TYPES:
+            allowed = ", ".join(sorted(ALLOWED_GRAPH_TYPES))
+            errors.append(
+                f"payload.graph graph_type '{graph_type}' is invalid, allowed: [{allowed}]"
+            )
 
     concepts = payload.get("concepts", [])
     relations = payload.get("relations", [])

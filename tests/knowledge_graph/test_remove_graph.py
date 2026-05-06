@@ -15,7 +15,7 @@ def test_remove_concept_via_orchestration_after_force_cleanup(isolated_db):
     ingest_knowledge_graph("g1", sample_graph_payload())
     service = OrchestrationAppService()
     plan = service.create_learning_plan("g1", topic_id="t1")
-    service.append_learning_record(
+    service.add_interaction_record(
         plan["plan_id"],
         "learn",
         {"concept_id": "c1", "result": "ok"},

@@ -13,22 +13,23 @@
 ## Command Invocation
 
 - Recommended executable format:
-  - `python scripts/cli.py get-review-prompt --plan-id PLAN_ID --topic-id t1`
-  - `python scripts/cli.py append-learning-record --plan-id PLAN_ID --mode review --concept-id c1 --result correct --score 90 --difficulty-bucket easy`
+  - `python -m scripts.cli.main get-mode-context --mode review --plan-id PLAN_ID --topic-id t1`
+  - `python -m scripts.cli.main add-interaction-record --context-id PLAN_ID --mode review --concept-id c1 --result correct --score 90 --difficulty-bucket easy`
 
 ## Runtime Execution Chain
 
-1. Preflight (once per session): `list_apis()` and `get_api_spec("get_review_prompt")`.
+1. Preflight (once per session): `get_api_spec("get_review_context")`.
 2. If `plan_id` missing:
    - `list_knowledge_graphs()`
    - `list_learning_plans()`
-   - `create_learning_plan(graph_id, topic_id?)`
+   - provide ranked plan/topic start options and ask user to choose
+   - only call `create_learning_plan(graph_id, topic_id?)` after explicit user confirmation
 3. Bootstrap review session:
-   - `get_review_prompt(plan_id, topic_id?)`
+   - `get_review_context(plan_id, topic_id?)`
    - build queue snapshot from candidate scope and ranking policy
 4. Execute one concept turn from queue head.
 5. Persist review result after each concept automatically:
-   - `append_learning_record(plan_id, mode="review", record_payload)`
+   - `add_interaction_record(plan_id, mode="review", record_payload)`
 6. Advance queue pointer and generate next concept prompt.
 
 ## Session Bootstrap
@@ -58,6 +59,12 @@
   2. higher forgetting risk
   3. lower recent accuracy
 - Never use latest-created/latest-updated as primary selector.
+
+## Turn Contract
+
+- One concept-focused review turn at a time unless user asks for recap.
+- Always return `summary` and one actionable `next_step`.
+- Return `next_session_context` so the next call can continue the queue safely.
 
 ## Turn Execution
 
@@ -110,12 +117,12 @@
 
 ## Steps
 
-1. Resolve scope and call `get_review_prompt(plan_id, topic_id?)`.
+1. Resolve scope and call `get_review_context(plan_id, topic_id?)`.
 2. Build queue snapshot from candidate pool and ranking policy.
 3. Select queue head and ask one retrieval question.
 4. Capture explicit learner attempt and judge from learner answer only.
 5. Provide detailed original-context explanation for this question after judgment.
-6. Automatically write `append_learning_record(..., mode='review', ...)`.
+6. Automatically write `add_interaction_record(..., mode='review', ...)`.
 7. Update session queue (`served_concept_ids`, pointer advance, retry flags).
 8. Automatically provide next concept question and recommended next review window.
 
@@ -134,6 +141,7 @@
 - If persistence fails, retain user-visible feedback and retry commit once.
 - If auto-next fetch fails, provide a manual `next_step` fallback prompt for the nearest due concept.
 - If queue construction is incomplete, degrade to overdue-first scan instead of latest-item fallback.
+- If `plan_id` is missing and user does not choose an option, stay in recommendation mode and do not auto-create plan.
 
 ## Minimal Record Payload
 

@@ -15,7 +15,7 @@ def _project_root() -> Path:
 def _run_cli(args: list[str]) -> dict | list:
     root = _project_root()
     result = subprocess.run(
-        [sys.executable, "scripts/cli.py", *args],
+        [sys.executable, "-m", "scripts.cli.main", *args],
         cwd=root,
         env=os.environ.copy(),
         check=True,
@@ -49,9 +49,9 @@ def test_software_engineering_full_path_coverage_and_methodology(isolated_db, tm
     created = _run_cli(["create-learning-plan", "--graph-id", "se-coverage"])
     plan_id = created["plan_id"]
 
-    learn_prompt = _run_cli(["get-learning-prompt", "--plan-id", plan_id])["prompt_text"]
-    quiz_prompt = _run_cli(["get-quiz-prompt", "--plan-id", plan_id])["prompt_text"]
-    review_prompt = _run_cli(["get-review-prompt", "--plan-id", plan_id])["prompt_text"]
+    learn_prompt = _run_cli(["get-mode-context", "--mode", "learn", "--plan-id", plan_id])["prompt_text"]
+    quiz_prompt = _run_cli(["get-mode-context", "--mode", "quiz", "--plan-id", plan_id])["prompt_text"]
+    review_prompt = _run_cli(["get-mode-context", "--mode", "review", "--plan-id", plan_id])["prompt_text"]
     assert "Feynman loop" in learn_prompt
     assert "Explain, Interpret, Apply" in learn_prompt
     assert "SOLO levels" in quiz_prompt
@@ -69,8 +69,8 @@ def test_software_engineering_full_path_coverage_and_methodology(isolated_db, tm
         mode = modes[idx % len(modes)]
         _run_cli(
             [
-                "append-learning-record",
-                "--plan-id",
+                "add-interaction-record",
+                "--context-id",
                 plan_id,
                 "--mode",
                 mode,

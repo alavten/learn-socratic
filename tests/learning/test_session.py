@@ -3,7 +3,7 @@ import pytest
 from scripts.foundation.storage import query_all, query_one
 from scripts.knowledge_graph.api import ingest_knowledge_graph
 from scripts.learning.api import create_learning_plan
-from scripts.learning.session import append_learning_record, get_or_create_active_session
+from scripts.learning.session import add_interaction_record, get_or_create_active_session
 from tests.helpers import sample_graph_payload
 
 
@@ -37,19 +37,19 @@ def test_get_or_create_active_session_missing_plan_raises(isolated_db):
         get_or_create_active_session("missing-plan")
 
 
-def test_append_learning_record_validations(isolated_db):
+def test_add_interaction_record_validations(isolated_db):
     plan_id, _ = _setup_plan()
 
     with pytest.raises(ValueError, match="invalid_mode"):
-        append_learning_record(plan_id, "invalid", {"concept_id": "c1"})
+        add_interaction_record(plan_id, "invalid", {"concept_id": "c1"})
 
     with pytest.raises(ValueError, match="missing_concept_id"):
-        append_learning_record(plan_id, "learn", {"score": 80})
+        add_interaction_record(plan_id, "learn", {"score": 80})
 
 
-def test_append_learning_record_persists_payload_fields(isolated_db):
+def test_add_interaction_record_persists_payload_fields(isolated_db):
     plan_id, learner_id = _setup_plan()
-    result = append_learning_record(
+    result = add_interaction_record(
         plan_id,
         "quiz",
         {

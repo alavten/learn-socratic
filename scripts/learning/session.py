@@ -48,7 +48,7 @@ def get_or_create_active_session(learning_plan_id: str) -> dict[str, Any]:
     return {"session_id": session_id, "learner_id": plan["learner_id"]}
 
 
-def append_learning_record(
+def add_interaction_record(
     learning_plan_id: str,
     mode: str,
     record_payload: dict[str, Any],
