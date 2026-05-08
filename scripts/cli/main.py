@@ -31,13 +31,13 @@ def _parser() -> argparse.ArgumentParser:
 
     list_graphs = sub.add_parser("list-knowledge-graphs", help="List knowledge graphs")
     list_graphs.add_argument("--limit", type=int, default=20)
-    list_graphs.add_argument("--cursor")
+    list_graphs.add_argument("--offset")
 
     get_graph = sub.add_parser("get-knowledge-graph", help="Get knowledge graph detail")
     get_graph.add_argument("--graph-id", required=True)
     get_graph.add_argument("--topic-id")
     get_graph.add_argument("--concept-limit", type=int, default=20)
-    get_graph.add_argument("--cursor")
+    get_graph.add_argument("--offset")
 
     ingest_graph = sub.add_parser("ingest-knowledge-graph", help="Ingest structured graph payload")
     ingest_graph.add_argument("--graph-id", required=True)
@@ -80,7 +80,7 @@ def _parser() -> argparse.ArgumentParser:
 
     list_plans = sub.add_parser("list-learning-plans", help="List learning plans")
     list_plans.add_argument("--limit", type=int, default=20)
-    list_plans.add_argument("--cursor")
+    list_plans.add_argument("--offset")
 
     create_plan = sub.add_parser("create-learning-plan", help="Create learning plan")
     create_plan.add_argument("--graph-id", required=True)
@@ -127,7 +127,7 @@ def main() -> None:
         _print_json(service.get_api_spec(args.api_name))
         return
     if args.command == "list-knowledge-graphs":
-        _print_json(service.list_knowledge_graphs(limit=args.limit, cursor=args.cursor))
+        _print_json(service.list_knowledge_graphs(limit=args.limit, offset=args.offset))
         return
     if args.command == "get-knowledge-graph":
         _print_json(
@@ -135,7 +135,7 @@ def main() -> None:
                 graph_id=args.graph_id,
                 topic_id=args.topic_id,
                 concept_limit=args.concept_limit,
-                cursor=args.cursor,
+                offset=args.offset,
             )
         )
         return
@@ -170,7 +170,7 @@ def main() -> None:
         )
         return
     if args.command == "list-learning-plans":
-        _print_json(service.list_learning_plans(limit=args.limit, cursor=args.cursor))
+        _print_json(service.list_learning_plans(limit=args.limit, offset=args.offset))
         return
     if args.command == "create-learning-plan":
         _print_json(service.create_learning_plan(graph_id=args.graph_id, topic_id=args.topic_id))

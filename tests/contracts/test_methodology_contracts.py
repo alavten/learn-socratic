@@ -53,3 +53,19 @@ def test_shared_and_learn_require_discovery_snapshot_and_dual_tables():
     assert "KnowledgeGraphs" in learn
     assert "PendingLearningPlans" in learn
     assert "choose **plan or graph first**" in learn
+
+
+def test_modes_require_per_turn_record_write_and_no_progress_on_write_failure():
+    root = _root() / "modes"
+    learn = _read(root / "learn.md")
+    quiz = _read(root / "quiz.md")
+    review = _read(root / "review.md")
+
+    assert "MUST: after each concept check answer is received, write record immediately" in learn
+    assert "do not advance to next concept/question" in learn
+
+    assert "MUST: after each learner answer is judged, write record immediately" in quiz
+    assert "no next question in same turn" in quiz
+
+    assert "MUST: after each learner answer is judged, write record immediately before queue advance/next question" in review
+    assert "only after successful record write" in review

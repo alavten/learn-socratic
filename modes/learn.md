@@ -4,41 +4,20 @@
 
 - User asks to learn, understand, or be guided through concepts.
 
-## Inputs
-
-- `plan_id`
-- Optional `topic_id`
-- `session_context`
-
-## Command Invocation
-
-- Recommended executable format:
-  - `python -m scripts.cli.main get-mode-context --mode learn --plan-id PLAN_ID --topic-id t1`
-  - `python -m scripts.cli.main add-interaction-record --context-id PLAN_ID --mode learn --concept-id c1 --result ok --score 85 --difficulty-bucket medium`
+Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 ## Runtime Execution Chain
 
 1. Preflight (once per session): `get_api_spec("get_learn_context")`.
-2. If `plan_id` missing, run discovery and recommendation only:
-   - `list_knowledge_graphs()` (paginate until done when `has_more=true`)
-   - `list_learning_plans()` (paginate until done when `has_more=true`)
-   - render two independent markdown tables first:
-     - `KnowledgeGraphs`
-     - `PendingLearningPlans`
-   - include `discovery_snapshot.source = "api_discovery"` in output payload
-   - analyze topic options + plan status and provide ranked start recommendations
-3. Ask user to choose where to start (existing plan or graph/topic), then confirm:
-   - ask user to choose **plan or graph first**, then choose mode/topic details
-   - if user does not make an explicit choice, stay in recommendation mode
-   - do not auto-select an existing plan even if it has learning history
-   - if user explicitly confirms a new start, call `create_learning_plan(graph_id, topic_id?)` when needed
-4. Fetch learn prompt context after explicit user selection:
+2. If `plan_id` is missing, route to `shared` for discovery tables and selection first.
+3. Fetch learn prompt context after explicit user selection:
    - `get_learn_context(plan_id, topic_id?)`
-5. Run Socratic teaching interaction with returned `prompt_text`.
-6. Persist learning record for this turn:
+4. Run Socratic teaching interaction with returned `prompt_text`.
+5. Persist learning record for this turn:
    - `add_interaction_record(plan_id, mode="learn", record_payload)`
    - minimum: `record_payload={"concept_id": "...", "result": "ok|partial|blocked"}`
    - recommended: include `score`, `difficulty_bucket`, and `latency_ms` for later quiz/review scheduling
+   - MUST: after each concept check answer is received, write record immediately before any next concept/question
 
 ## Turn Contract
 
@@ -86,25 +65,6 @@
 - When correcting misunderstandings, cite concept/relation/evidence summaries from prompt context.
 - If context is insufficient, explicitly state uncertainty and ask to narrow scope.
 
-## Metacognitive Check
-
-- Every 3-5 turns, ask one short calibration question:
-  - expected confidence (0-100)
-  - what was hard
-  - what to review next
-
-## Steps
-
-1. If `plan_id` is missing, analyze available knowledge-graph topics and existing learning-plan status.
-2. Provide ranked start suggestions and ask user to choose a start point.
-3. Resolve scope from user choice, then call `get_learn_context(plan_id, topic_id?)`.
-4. Select one `anchor_concept_id` from context and set current depth level.
-5. Deliver explanation and ask one explicit learner restatement/check for that same anchor concept at matching depth.
-6. Diagnose outcome from learner restatement/check answer only.
-7. If ready for quiz, output a quiz handoff hint (`anchor_concept_id`, achieved depth, suggested first question style).
-8. Write `add_interaction_record(..., mode='learn', ...)` using learner-answer-based outcome.
-9. Return recommended next step.
-
 ## Output
 
 - `mode: learn`
@@ -114,11 +74,9 @@
 
 ## Retry / Fallback
 
-- If `plan_id` is missing and user does not choose a suggestion, keep recommendation mode and do not auto-create plan.
-- If discovery response is missing `discovery_snapshot` or either table, re-run discovery and re-render both tables before asking again.
-- Do not use memory-only inventory text (e.g., “根据记忆”) as substitute for this-turn discovery results.
+- If `plan_id` is missing, do not run local recommendation logic; route to `shared`.
 - If context retrieval fails, ask user for plan/topic confirmation.
-- If write fails, show response and ask for permission to retry record submission.
+- If write fails, do not advance to next concept/question; retry once and return explicit recovery `next_step`.
 
 ## Minimal Record Payload
 

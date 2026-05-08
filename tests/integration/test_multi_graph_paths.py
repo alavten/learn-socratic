@@ -67,12 +67,12 @@ def test_multi_graph_listing_with_pagination(isolated_db):
     first = service.list_knowledge_graphs(limit=2)
     assert len(first["items"]) == 2
     assert first["has_more"] is True
-    assert first["cursor"] == "2"
+    assert first["next_offset"] == "2"
 
-    second = service.list_knowledge_graphs(limit=2, cursor=first["cursor"])
+    second = service.list_knowledge_graphs(limit=2, offset=first["next_offset"])
     assert len(second["items"]) == 1
     assert second["has_more"] is False
-    assert second["cursor"] is None
+    assert second["next_offset"] is None
 
 
 def test_plan_and_prompt_stay_with_selected_graph_scope(isolated_db):

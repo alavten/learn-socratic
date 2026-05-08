@@ -64,5 +64,4 @@ temp/
 *.log
 *.pid
 .cache/
-.cursor/
 payloads

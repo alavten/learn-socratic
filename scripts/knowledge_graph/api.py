@@ -18,12 +18,12 @@ from scripts.knowledge_graph.store import (
 )
 
 
-def list_knowledge_graphs(limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
-    page = list_graphs(limit=limit, cursor=cursor)
+def list_knowledge_graphs(limit: int = 20, offset: str | None = None) -> dict[str, Any]:
+    page = list_graphs(limit=limit, offset=offset)
     return {
         "items": page["items"],
         "has_more": page["has_more"],
-        "cursor": page["next_cursor"],
+        "next_offset": page["next_offset"],
     }
 
 
@@ -31,7 +31,7 @@ def get_knowledge_graph(
     graph_id: str,
     topic_id: str | None = None,
     concept_limit: int = 20,
-    cursor: str | None = None,
+    offset: str | None = None,
 ) -> dict[str, Any]:
     core = get_graph_core(graph_id)
     if not core:
@@ -42,7 +42,7 @@ def get_knowledge_graph(
         graph_id=graph_id,
         topic_id=topic_id,
         concept_limit=concept_limit,
-        cursor=cursor,
+        offset=offset,
     )
     concept_briefs = [
         {
@@ -59,7 +59,7 @@ def get_knowledge_graph(
         "topic_concepts": topic_concepts_page["items"],
         "concept_briefs": concept_briefs,
         "has_more": topic_concepts_page["has_more"],
-        "cursor": topic_concepts_page["next_cursor"],
+        "next_offset": topic_concepts_page["next_offset"],
     }
 
 
@@ -205,12 +205,12 @@ def get_concepts(
     concept_scope: dict[str, Any],
     detail: str = "brief",
     concept_limit: int = 20,
-    cursor: str | None = None,
+    offset: str | None = None,
 ) -> dict[str, Any]:
     concept_ids = resolve_scope_concepts(graph_id, concept_scope)
-    page_limit, offset = paginate(concept_limit, cursor)
+    page_limit, offset_value = paginate(concept_limit, offset)
     if not concept_ids:
-        return {"concept_briefs": [], "has_more": False, "cursor": None}
+        return {"concept_briefs": [], "has_more": False, "next_offset": None}
     placeholders = ",".join("?" for _ in concept_ids)
     rows = query_all(
         f"""
@@ -226,7 +226,7 @@ def get_concepts(
         ORDER BY canonicalName ASC
         LIMIT ? OFFSET ?
         """,
-        (graph_id, *concept_ids, page_limit + 1, offset),
+        (graph_id, *concept_ids, page_limit + 1, offset_value),
     )
     has_more = len(rows) > page_limit
     visible = rows[:page_limit]
@@ -242,7 +242,7 @@ def get_concepts(
     payload: dict[str, Any] = {
         "concept_briefs": brief,
         "has_more": has_more,
-        "cursor": str(offset + page_limit) if has_more else None,
+        "next_offset": str(offset_value + page_limit) if has_more else None,
     }
     if detail == "full":
         payload["detail"] = {"concepts": visible}

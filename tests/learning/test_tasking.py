@@ -3,7 +3,7 @@ import pytest
 from scripts.foundation.storage import query_one
 from scripts.knowledge_graph.api import ingest_knowledge_graph
 from scripts.learning.api import create_learning_plan
-from scripts.learning.tasking import upsert_task_for_state
+from scripts.learning.tasking import sync_task_status_from_result, upsert_task_for_state
 from tests.helpers import sample_graph_payload
 
 
@@ -82,3 +82,56 @@ def test_upsert_task_updates_existing_pending_task(isolated_db):
     )
     assert row["reason_type"] == "manual"
     assert row["task_type"] == "learn"
+
+
+def test_sync_task_status_marks_pending_to_completed_on_success(isolated_db):
+    plan_id = _setup_plan()
+    created = upsert_task_for_state(
+        learning_plan_id=plan_id,
+        concept_id="c1",
+        state_summary={"mastery_score": 0.8, "forgetting_risk": 0.2},
+        last_result="incorrect",
+    )
+    out = sync_task_status_from_result(
+        learning_plan_id=plan_id,
+        concept_id="c1",
+        state_summary={"mastery_score": 0.82, "forgetting_risk": 0.2},
+        last_result="correct",
+    )
+    assert out["status_action"] == "pending_to_completed"
+    assert out["learning_task_id"] == created["learning_task_id"]
+    row = query_one(
+        "SELECT status FROM LearningTask WHERE learningTaskId = ?",
+        (created["learning_task_id"],),
+    )
+    assert row["status"] == "completed"
+
+
+def test_sync_task_status_reopens_completed_to_pending_on_failure(isolated_db):
+    plan_id = _setup_plan()
+    created = upsert_task_for_state(
+        learning_plan_id=plan_id,
+        concept_id="c2",
+        state_summary={"mastery_score": 0.8, "forgetting_risk": 0.2},
+        last_result="incorrect",
+    )
+    first = sync_task_status_from_result(
+        learning_plan_id=plan_id,
+        concept_id="c2",
+        state_summary={"mastery_score": 0.9, "forgetting_risk": 0.1},
+        last_result="correct",
+    )
+    assert first["status_action"] == "pending_to_completed"
+    second = sync_task_status_from_result(
+        learning_plan_id=plan_id,
+        concept_id="c2",
+        state_summary={"mastery_score": 0.4, "forgetting_risk": 0.7},
+        last_result="incorrect",
+    )
+    assert second["status_action"] == "completed_to_pending"
+    assert second["learning_task_id"] == created["learning_task_id"]
+    row = query_one(
+        "SELECT status FROM LearningTask WHERE learningTaskId = ?",
+        (created["learning_task_id"],),
+    )
+    assert row["status"] == "pending"

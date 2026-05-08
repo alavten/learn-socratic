@@ -7,8 +7,8 @@ from typing import Any
 from scripts.foundation.storage import paginate, query_all, query_one, transaction
 
 
-def list_graphs(limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
-    page_limit, offset = paginate(limit, cursor)
+def list_graphs(limit: int = 20, offset: str | None = None) -> dict[str, Any]:
+    page_limit, offset_value = paginate(limit, offset)
     rows = query_all(
         """
         SELECT
@@ -23,11 +23,11 @@ def list_graphs(limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
         ORDER BY g.releasedAt DESC, g.graphId ASC
         LIMIT ? OFFSET ?
         """,
-        (page_limit + 1, offset),
+        (page_limit + 1, offset_value),
     )
     has_more = len(rows) > page_limit
     visible = rows[:page_limit]
-    next_cursor = str(offset + page_limit) if has_more else None
+    next_offset = str(offset_value + page_limit) if has_more else None
     graph_ids = [row["graph_id"] for row in visible]
     topic_preview_by_graph: dict[str, list[str]] = {}
     if graph_ids:
@@ -49,7 +49,7 @@ def list_graphs(limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
     for row in visible:
         topics = topic_preview_by_graph.get(row["graph_id"], [])
         row["topic_content"] = "；".join(topics) if topics else "（暂无主题摘要）"
-    return {"items": visible, "has_more": has_more, "next_cursor": next_cursor}
+    return {"items": visible, "has_more": has_more, "next_offset": next_offset}
 
 
 def get_graph_core(graph_id: str) -> dict[str, Any] | None:
@@ -110,15 +110,15 @@ def get_topic_concepts(
     graph_id: str,
     topic_id: str | None = None,
     concept_limit: int = 20,
-    cursor: str | None = None,
+    offset: str | None = None,
 ) -> dict[str, Any]:
-    page_limit, offset = paginate(concept_limit, cursor)
+    page_limit, offset_value = paginate(concept_limit, offset)
     params: list[Any] = [graph_id]
     topic_clause = ""
     if topic_id:
         topic_clause = "AND tc.topicId = ?"
         params.append(topic_id)
-    params.extend([page_limit + 1, offset])
+    params.extend([page_limit + 1, offset_value])
     rows = query_all(
         f"""
         SELECT
@@ -141,8 +141,8 @@ def get_topic_concepts(
     )
     has_more = len(rows) > page_limit
     visible = rows[:page_limit]
-    next_cursor = str(offset + page_limit) if has_more else None
-    return {"items": visible, "has_more": has_more, "next_cursor": next_cursor}
+    next_offset = str(offset_value + page_limit) if has_more else None
+    return {"items": visible, "has_more": has_more, "next_offset": next_offset}
 
 
 def resolve_scope_concepts(graph_id: str, concept_scope: dict[str, Any]) -> list[str]:

@@ -464,13 +464,13 @@ sequenceDiagram
 - **统一返回粒度约束（适用于全部方法）**：
   - **默认返回**：`core + summary`（完成本轮决策所需最小字段）。
   - **按需扩展**：`detail`（仅在用户追问依据、或 Agent 明确请求时返回）。
-  - **分页与限流**：集合结果必须支持 `limit/cursor`；默认限制 `concepts` 数量，返回 `has_more`。
+  - **分页与限流**：集合结果必须支持 `limit/offset`；默认限制 `concepts` 数量，返回 `has_more`。
 - **`knowledge_graph` 模块（对应 3.1，支撑 3.2～3.5）必须提供的方法**：
   1. `list_knowledge_graphs()`
   - 默认返回：`graph_id`、`name`、`revision`、`status`、`topic_count`、`concept_count`、`updated_at`。
   - 按需扩展：无。
   - 不建议返回：图谱内 `concept/evidence` 明细。
-  2. `get_knowledge_graph(graph_id, topic_id=None, concept_limit=20, cursor=None)`
+  2. `get_knowledge_graph(graph_id, topic_id=None, concept_limit=20, offset=None)`
   - 默认返回：`topics`、`topic_concepts`、`concept_briefs`（`concept_id`、`canonical_name`、`short_definition`、`difficulty`）。
   - 按需扩展：`detail.concepts`（完整定义、更多属性）。
   - 不建议返回：Evidence 原文列表（除非明确请求）。
@@ -478,7 +478,7 @@ sequenceDiagram
   - 默认返回：`graph_id`、`version`、`change_summary`、`validation_summary`。
   - 按需扩展：`detail.failed_items`（校验失败明细）。
   - 不建议返回：全量写入后的图谱快照。
-  4. `get_concepts(graph_id, concept_scope, detail='brief', concept_limit=20, cursor=None)`
+  4. `get_concepts(graph_id, concept_scope, detail='brief', concept_limit=20, offset=None)`
   - 默认返回：`concept_briefs`（`concept_id`、`canonical_name`、`short_definition`、`difficulty`）。
   - 按需扩展：`detail.concepts`（完整定义、更多属性）。
   - 不建议返回：无 scope 限制的全量概念集合。

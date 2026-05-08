@@ -1,5 +1,7 @@
 import uuid
 
+import pytest
+
 from scripts.learning.api import (
     add_interaction_record,
     create_learning_plan,
@@ -118,6 +120,7 @@ def test_context_and_append_record_flow(isolated_db):
     assert append_result["commit_result"]["record_type"] == "quiz"
     assert append_result["plan_delta_summary"]["plan_id"] == plan["plan_id"]
     assert append_result["plan_delta_summary"]["plan_touched"] is True
+    assert "task_status_delta_summary" in append_result
     review_context = get_review_context(plan["plan_id"])
     assert "due_items" in review_context
 
@@ -167,6 +170,34 @@ def test_append_record_bumps_plan_updated_at_and_reorders_plans(isolated_db):
     assert after["items"][0]["plan_id"] == p1["plan_id"]
 
 
+def test_add_interaction_record_syncs_task_status_to_completed_and_pending(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+    first = add_interaction_record(
+        plan["plan_id"],
+        "quiz",
+        {
+            "concept_id": "c1",
+            "result": "correct",
+            "score": 92,
+            "difficulty_bucket": "medium",
+        },
+    )
+    assert first["task_status_delta_summary"]["status"] == "completed"
+
+    second = add_interaction_record(
+        plan["plan_id"],
+        "quiz",
+        {
+            "concept_id": "c1",
+            "result": "incorrect",
+            "score": 30,
+            "difficulty_bucket": "hard",
+        },
+    )
+    assert second["task_status_delta_summary"]["status"] == "pending"
+
+
 def test_create_plan_reuses_existing_graph_plan_and_extends_scope(isolated_db):
     ingest_knowledge_graph("g1", sample_graph_payload())
     created = create_learning_plan("g1", topic_id="t1")
@@ -177,3 +208,39 @@ def test_create_plan_reuses_existing_graph_plan_and_extends_scope(isolated_db):
 
     context = get_learning_context(created["plan_id"])
     assert set(context["concept_scope"]["topic_ids"]) == {"t1", "t2"}
+
+
+def test_add_interaction_record_rolls_back_on_state_failure(isolated_db, monkeypatch):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+
+    from scripts.learning import api as learning_api_module
+
+    def _boom(**_: object) -> dict[str, object]:
+        raise RuntimeError("state_failed")
+
+    monkeypatch.setattr(learning_api_module, "update_state_from_record", _boom)
+
+    with pytest.raises(RuntimeError, match="state_failed"):
+        add_interaction_record(
+            plan["plan_id"],
+            "quiz",
+            {
+                "concept_id": "c1",
+                "result": "correct",
+                "score": 85,
+                "difficulty_bucket": "medium",
+            },
+        )
+
+    with transaction() as conn:
+        record_count = conn.execute(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM LearningRecord lr
+            JOIN LearningSession ls ON ls.sessionId = lr.sessionId
+            WHERE ls.learningPlanId = ?
+            """,
+            (plan["plan_id"],),
+        ).fetchone()["cnt"]
+    assert record_count == 0

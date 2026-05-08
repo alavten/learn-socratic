@@ -49,7 +49,7 @@ API_SPECS: dict[str, dict[str, Any]] = {
             "type": "object",
             "properties": {
                 "limit": {"type": "integer", "minimum": 1},
-                "cursor": {"type": "string"},
+                "offset": {"type": "string"},
             },
             "additionalProperties": False,
         },
@@ -65,13 +65,13 @@ API_SPECS: dict[str, dict[str, Any]] = {
                 "graph_id": {"type": "string", "minLength": 1},
                 "topic_id": {"type": "string"},
                 "concept_limit": {"type": "integer", "minimum": 1},
-                "cursor": {"type": "string"},
+                "offset": {"type": "string"},
             },
             "additionalProperties": False,
         },
         "output_schema": {
             "type": "object",
-            "required": ["graph", "topics", "topic_concepts", "concept_briefs", "has_more", "cursor"],
+            "required": ["graph", "topics", "topic_concepts", "concept_briefs", "has_more", "next_offset"],
             "properties": {
                 "graph": {"type": "object"},
                 "topics": {"type": "array", "items": {"type": "object"}},
@@ -117,7 +117,7 @@ API_SPECS: dict[str, dict[str, Any]] = {
                     },
                 },
                 "has_more": {"type": "boolean"},
-                "cursor": {"type": ["string", "null"]},
+                "next_offset": {"type": ["string", "null"]},
             },
             "additionalProperties": True,
         },
@@ -340,7 +340,7 @@ API_SPECS: dict[str, dict[str, Any]] = {
             "type": "object",
             "properties": {
                 "limit": {"type": "integer", "minimum": 1},
-                "cursor": {"type": "string"},
+                "offset": {"type": "string"},
             },
             "additionalProperties": False,
         },
@@ -696,23 +696,23 @@ class OrchestrationAppService:
             "examples": spec.get("examples", {}),
         }
 
-    def list_knowledge_graphs(self, limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
-        log_event(logger, "list_knowledge_graphs", limit=limit, cursor=cursor)
-        return kg_api.list_knowledge_graphs(limit=limit, cursor=cursor)
+    def list_knowledge_graphs(self, limit: int = 20, offset: str | None = None) -> dict[str, Any]:
+        log_event(logger, "list_knowledge_graphs", limit=limit, offset=offset)
+        return kg_api.list_knowledge_graphs(limit=limit, offset=offset)
 
     def get_knowledge_graph(
         self,
         graph_id: str,
         topic_id: str | None = None,
         concept_limit: int = 20,
-        cursor: str | None = None,
+        offset: str | None = None,
     ) -> dict[str, Any]:
         log_event(logger, "get_knowledge_graph", graph_id=graph_id, topic_id=topic_id)
         return kg_api.get_knowledge_graph(
             graph_id=graph_id,
             topic_id=topic_id,
             concept_limit=concept_limit,
-            cursor=cursor,
+            offset=offset,
         )
 
     def ingest_knowledge_graph(
@@ -807,30 +807,30 @@ class OrchestrationAppService:
             "delete_summary": delete_summary,
         }
 
-    def list_learning_plans(self, limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
-        return learning_api.list_learning_plans(limit=limit, cursor=cursor)
+    def list_learning_plans(self, limit: int = 20, offset: str | None = None) -> dict[str, Any]:
+        return learning_api.list_learning_plans(limit=limit, offset=offset)
 
     def get_discovery_context(self, page_limit: int = 20, max_pages: int = 10) -> dict[str, Any]:
         graph_items: list[dict[str, Any]] = []
-        graph_cursor: str | None = None
+        graph_offset: str | None = None
         graph_pages = 0
         while graph_pages < max_pages:
-            page = self.list_knowledge_graphs(limit=page_limit, cursor=graph_cursor)
+            page = self.list_knowledge_graphs(limit=page_limit, offset=graph_offset)
             graph_pages += 1
             graph_items.extend(page.get("items", []))
-            graph_cursor = page.get("cursor")
-            if not page.get("has_more") or not graph_cursor:
+            graph_offset = page.get("next_offset")
+            if not page.get("has_more") or not graph_offset:
                 break
 
         plan_items: list[dict[str, Any]] = []
-        plan_cursor: str | None = None
+        plan_offset: str | None = None
         plan_pages = 0
         while plan_pages < max_pages:
-            page = self.list_learning_plans(limit=page_limit, cursor=plan_cursor)
+            page = self.list_learning_plans(limit=page_limit, offset=plan_offset)
             plan_pages += 1
             plan_items.extend(page.get("items", []))
-            plan_cursor = page.get("cursor")
-            if not page.get("has_more") or not plan_cursor:
+            plan_offset = page.get("next_offset")
+            if not page.get("has_more") or not plan_offset:
                 break
 
         tables = _build_discovery_tables(graph_items, plan_items)

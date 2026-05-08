@@ -14,22 +14,18 @@ This skill supports graph ingestion and concept learning with four interaction m
 - `quiz`: assess current mastery.
 - `review`: reinforce retention and weak points.
 
-## Session Contract
-
-- One primary mode per user turn unless clarifying in `shared`.
-- Always return `summary` plus one concrete `next_step` aligned with the active mode contract.
-- Detailed steps live in `modes/*.md`; do not duplicate here.
-
-## Global Guardrails
+## Session Guardrails
 
 Applies to every session regardless of mode.
 
 - **Session start**: return `mode` and one actionable `next_step`.
-- **Session end**: return concise `summary` and `next_step`.
-- Per-turn and per-mode fields are defined only in `modes/*.md`.
+- **Session end**: return concise `summary` and one actionable `next_step`.
+- One primary mode per user turn; use `shared` only for clarification/recovery.
+- Follow exactly one active mode contract (`shared`/`ingest`/`learn`/`quiz`/`review`) per turn; never mix per-mode rules.
+- Keep this file thin: mode-specific fields/steps live only in mode contract files.
 - Keep responses concise and evidence-grounded.
 - Adapt difficulty based on latest learner performance.
-- Do not duplicate mode-specific steps here; follow `modes/*.md`.
+- Do not use memory-only fallback as primary evidence; run required API discovery first.
 - Do not call write/mutation APIs without explicit user confirmation.
 
 ## Intent Matrix
@@ -51,13 +47,6 @@ Routing flow rules:
 3. If target mode file is unavailable or dispatch fails, return `summary` with failure reason and `next_step` to continue in `shared`.
 4. `shared` also handles recoverable execution failures and long-tail capability discovery, then must hand off back to one main mode (`ingest`/`learn`/`quiz`/`review`) when context is ready.
 
-## Quick Start
-
-- Detect user intent and route using the table above.
-- Load only the selected mode contract file (for example, modes/learn.md) and confirm it is available before execution.
-- If mode file loading fails, route to `shared` and return failure reason with next action.
-- Return mode output with `summary` and one actionable `next_step`.
-
 ## CLI Hints
 
 - Example:
@@ -68,4 +57,3 @@ Routing flow rules:
 - `--payload-file=`
 - `--target=`
 - `--timebox=`
-

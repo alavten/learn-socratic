@@ -63,26 +63,26 @@ def test_list_graphs_pagination(isolated_db):
     _ingest_graph_with_suffix("g2", "b")
     _ingest_graph_with_suffix("g3", "c")
 
-    first = list_graphs(limit=2, cursor=None)
+    first = list_graphs(limit=2, offset=None)
     assert len(first["items"]) == 2
     assert first["has_more"] is True
-    assert first["next_cursor"] == "2"
+    assert first["next_offset"] == "2"
 
-    second = list_graphs(limit=2, cursor=first["next_cursor"])
+    second = list_graphs(limit=2, offset=first["next_offset"])
     assert len(second["items"]) == 1
     assert second["has_more"] is False
-    assert second["next_cursor"] is None
+    assert second["next_offset"] is None
 
 
 def test_get_topic_concepts_filters_and_paginates(isolated_db):
     ingest_knowledge_graph("g1", sample_graph_payload())
-    page = get_topic_concepts(graph_id="g1", topic_id="t1", concept_limit=1, cursor=None)
+    page = get_topic_concepts(graph_id="g1", topic_id="t1", concept_limit=1, offset=None)
 
     assert len(page["items"]) == 1
     assert page["items"][0]["topic_id"] == "t1"
     assert page["items"][0]["concept_id"] == "c1"
     assert page["has_more"] is False
-    assert page["next_cursor"] is None
+    assert page["next_offset"] is None
 
 
 def test_resolve_scope_concepts_priority_and_fallback(isolated_db):

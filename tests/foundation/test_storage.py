@@ -4,7 +4,7 @@ from scripts.foundation.storage import execute, paginate, query_one
 
 
 @pytest.mark.parametrize(
-    ("limit", "cursor", "expected"),
+    ("limit", "offset", "expected"),
     [
         (20, None, (20, 0)),
         (0, None, (1, 0)),
@@ -12,11 +12,11 @@ from scripts.foundation.storage import execute, paginate, query_one
         (999, "2", (200, 2)),
     ],
 )
-def test_paginate_bounds(limit, cursor, expected):
-    assert paginate(limit, cursor) == expected
+def test_paginate_bounds(limit, offset, expected):
+    assert paginate(limit, offset) == expected
 
 
-def test_paginate_invalid_cursor_raises_value_error():
+def test_paginate_invalid_offset_raises_value_error():
     with pytest.raises(ValueError):
         paginate(10, "not-a-number")
 

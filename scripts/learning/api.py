@@ -10,7 +10,7 @@ from scripts.foundation.storage import paginate, query_all, query_one, transacti
 from scripts.knowledge_graph import api as kg_api
 from scripts.learning.session import add_interaction_record as append_record_impl
 from scripts.learning.state import update_state_from_record
-from scripts.learning.tasking import upsert_task_for_state
+from scripts.learning.tasking import sync_task_status_from_result, upsert_task_for_state
 
 
 def _now() -> str:
@@ -34,8 +34,8 @@ def _ensure_default_learner() -> str:
     return learner_id
 
 
-def list_learning_plans(limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
-    page_limit, offset = paginate(limit, cursor)
+def list_learning_plans(limit: int = 20, offset: str | None = None) -> dict[str, Any]:
+    page_limit, offset_value = paginate(limit, offset)
     rows = query_all(
         """
         SELECT
@@ -58,7 +58,7 @@ def list_learning_plans(limit: int = 20, cursor: str | None = None) -> dict[str,
         ORDER BY lp.updatedAt DESC
         LIMIT ? OFFSET ?
         """,
-        (page_limit + 1, offset),
+        (page_limit + 1, offset_value),
     )
     has_more = len(rows) > page_limit
     visible = rows[:page_limit]
@@ -82,7 +82,7 @@ def list_learning_plans(limit: int = 20, cursor: str | None = None) -> dict[str,
     return {
         "items": visible,
         "has_more": has_more,
-        "cursor": str(offset + page_limit) if has_more else None,
+        "next_offset": str(offset_value + page_limit) if has_more else None,
     }
 
 
@@ -626,22 +626,31 @@ def add_interaction_record(
     mode: str,
     record_payload: dict[str, Any],
 ) -> dict[str, Any]:
-    commit = append_record_impl(plan_id, mode, record_payload)
-    state_delta = update_state_from_record(
-        learner_id=commit["learner_id"],
-        learning_plan_id=plan_id,
-        concept_id=commit["concept_id"],
-        mode=mode,
-        record_payload=record_payload,
-    )
-    task_delta = upsert_task_for_state(
-        learning_plan_id=plan_id,
-        concept_id=commit["concept_id"],
-        state_summary=state_delta,
-        last_result=record_payload.get("result"),
-    )
-    plan_updated_at = _now()
     with transaction() as conn:
+        commit = append_record_impl(plan_id, mode, record_payload, conn=conn)
+        state_delta = update_state_from_record(
+            learner_id=commit["learner_id"],
+            learning_plan_id=plan_id,
+            concept_id=commit["concept_id"],
+            mode=mode,
+            record_payload=record_payload,
+            conn=conn,
+        )
+        task_delta = upsert_task_for_state(
+            learning_plan_id=plan_id,
+            concept_id=commit["concept_id"],
+            state_summary=state_delta,
+            last_result=record_payload.get("result"),
+            conn=conn,
+        )
+        task_status_delta = sync_task_status_from_result(
+            learning_plan_id=plan_id,
+            concept_id=commit["concept_id"],
+            state_summary=state_delta,
+            last_result=record_payload.get("result"),
+            conn=conn,
+        )
+        plan_updated_at = _now()
         conn.execute(
             "UPDATE LearningPlan SET updatedAt = ? WHERE learningPlanId = ?",
             (plan_updated_at, plan_id),
@@ -650,6 +659,7 @@ def add_interaction_record(
         "commit_result": commit,
         "state_delta_summary": state_delta,
         "task_delta_summary": task_delta,
+        "task_status_delta_summary": task_status_delta,
         "plan_delta_summary": {
             "plan_id": plan_id,
             "plan_updated_at": plan_updated_at,

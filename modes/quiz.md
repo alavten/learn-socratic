@@ -4,32 +4,19 @@
 
 - User asks for testing, checking mastery, or practice questions.
 
-## Inputs
-
-- `plan_id`
-- Optional `topic_id`
-- `session_context`
-
-## Command Invocation
-
-- Recommended executable format:
-  - `python -m scripts.cli.main get-mode-context --mode quiz --plan-id PLAN_ID --topic-id t1`
-  - `python -m scripts.cli.main add-interaction-record --context-id PLAN_ID --mode quiz --concept-id c1 --result correct --score 78 --difficulty-bucket hard`
+Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 ## Runtime Execution Chain
 
 1. Preflight (once per session): `get_api_spec("get_quiz_context")`.
-2. If `plan_id` missing:
-   - `list_knowledge_graphs()`
-   - `list_learning_plans()`
-   - provide ranked plan/topic start options and ask user to choose
-   - only call `create_learning_plan(graph_id, topic_id?)` after explicit user confirmation
+2. If `plan_id` is missing, route to `shared` for discovery tables and selection first.
 3. Fetch quiz context:
    - `get_quiz_context(plan_id, topic_id?)`
 4. Generate questions and collect learner answers.
 5. Evaluate only learner answers first, then explain through model logic.
 6. Persist result:
    - `add_interaction_record(plan_id, mode="quiz", record_payload)`
+   - MUST: after each learner answer is judged, write record immediately before emitting next question
 
 ## Turn Contract
 
@@ -72,21 +59,6 @@
 - Feedback must reference quiz context signals (`history_performance_summary`, concept scope).
 - Avoid unsupported claims beyond retrieved context.
 
-## Metacognitive Check
-
-- Every 5 questions, run one brief self-check:
-  - confidence before answer
-  - actual outcome
-  - likely error type (`concept_gap`, `memory_mixup`, `question_misread`, `unknown`)
-
-## Steps
-
-1. Resolve scope and call `get_quiz_context(plan_id, topic_id?)`.
-2. Generate question and collect explicit learner answer text first.
-3. Evaluate outcome from learner answer only, then provide explanation/correction.
-4. Write `add_interaction_record(..., mode='quiz', ...)` from learner-answer-based verdict.
-5. Return feedback and targeted follow-up suggestions.
-
 ## Output
 
 - `mode: quiz`
@@ -98,7 +70,8 @@
 
 - If quiz context is missing, request narrower topic or plan selection.
 - If scoring payload is incomplete, persist a partial record with a warning tag.
-- If `plan_id` is missing and user does not choose an option, stay in recommendation mode and do not auto-create plan.
+- If `plan_id` is missing, do not run local recommendation logic; route to `shared`.
+- If record write fails, return recovery guidance with **no next question in same turn**; do not push next question until retry succeeds or user confirms recovery action.
 
 ## Minimal Record Payload
 

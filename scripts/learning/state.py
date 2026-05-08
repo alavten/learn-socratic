@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -29,16 +30,28 @@ def update_state_from_record(
     concept_id: str,
     mode: str,
     record_payload: dict[str, Any],
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, Any]:
     now = _now()
-    row = query_one(
-        """
-        SELECT *
-        FROM LearnerConceptState
-        WHERE learnerId = ? AND learningPlanId = ? AND conceptId = ?
-        """,
-        (learner_id, learning_plan_id, concept_id),
-    )
+    if conn is not None:
+        fetched = conn.execute(
+            """
+            SELECT *
+            FROM LearnerConceptState
+            WHERE learnerId = ? AND learningPlanId = ? AND conceptId = ?
+            """,
+            (learner_id, learning_plan_id, concept_id),
+        ).fetchone()
+        row = dict(fetched) if fetched else None
+    else:
+        row = query_one(
+            """
+            SELECT *
+            FROM LearnerConceptState
+            WHERE learnerId = ? AND learningPlanId = ? AND conceptId = ?
+            """,
+            (learner_id, learning_plan_id, concept_id),
+        )
 
     score_input = record_payload.get("score")
     normalized_score = max(0.0, min(1.0, (float(score_input) / 100.0) if score_input is not None else 0.6))
@@ -60,7 +73,7 @@ def update_state_from_record(
         forgetting_risk = max(0.0, min(1.0, 1.0 - mastery))
         next_review_at = now + timedelta(days=max(1, int((1.0 - forgetting_risk) * 7)))
 
-        with transaction() as conn:
+        if conn is not None:
             conn.execute(
                 """
                 UPDATE LearnerConceptState
@@ -93,6 +106,40 @@ def update_state_from_record(
                     concept_id,
                 ),
             )
+        else:
+            with transaction() as tx:
+                tx.execute(
+                    """
+                    UPDATE LearnerConceptState
+                    SET masteryLevel = ?, masteryScore = ?, learnCount = learnCount + ?,
+                        quizCount = quizCount + ?, reviewCount = reviewCount + ?,
+                        easyCount = easyCount + ?, mediumCount = mediumCount + ?, hardCount = hardCount + ?,
+                        correctCount = correctCount + ?, wrongCount = wrongCount + ?,
+                        confidence = ?, forgettingRisk = ?, lastInteractionAt = ?, nextReviewAt = ?,
+                        updatedAt = ?
+                    WHERE learnerId = ? AND learningPlanId = ? AND conceptId = ?
+                    """,
+                    (
+                        _mastery_level(mastery),
+                        mastery,
+                        learn_inc,
+                        quiz_inc,
+                        review_inc,
+                        easy_inc,
+                        medium_inc,
+                        hard_inc,
+                        correct_inc,
+                        wrong_inc,
+                        confidence,
+                        forgetting_risk,
+                        now.isoformat(),
+                        next_review_at.isoformat(),
+                        now.isoformat(),
+                        learner_id,
+                        learning_plan_id,
+                        concept_id,
+                    ),
+                )
         return {
             "state_action": "updated",
             "mastery_score": mastery,
@@ -116,7 +163,7 @@ def update_state_from_record(
     correct_count = 1 if result in {"correct", "pass", "ok"} else 0
     wrong_count = 1 if result in {"wrong", "fail", "incorrect"} else 0
 
-    with transaction() as conn:
+    if conn is not None:
         conn.execute(
             """
             INSERT INTO LearnerConceptState(
@@ -153,6 +200,44 @@ def update_state_from_record(
                 now.isoformat(),
             ),
         )
+    else:
+        with transaction() as tx:
+            tx.execute(
+                """
+                INSERT INTO LearnerConceptState(
+                    learnerConceptStateId, learnerId, learningPlanId, conceptId,
+                    targetLevel, targetScore, masteryLevel, masteryScore,
+                    learnCount, quizCount, reviewCount,
+                    easyCount, mediumCount, hardCount,
+                    correctCount, wrongCount,
+                    confidence, forgettingRisk, lastInteractionAt, nextReviewAt, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    state_id,
+                    learner_id,
+                    learning_plan_id,
+                    concept_id,
+                    "Proficient",
+                    0.8,
+                    _mastery_level(mastery),
+                    mastery,
+                    learn_count,
+                    quiz_count,
+                    review_count,
+                    easy_count,
+                    medium_count,
+                    hard_count,
+                    correct_count,
+                    wrong_count,
+                    confidence,
+                    forgetting_risk,
+                    now.isoformat(),
+                    next_review_at.isoformat(),
+                    now.isoformat(),
+                    now.isoformat(),
+                ),
+            )
     return {
         "state_action": "created",
         "mastery_score": mastery,

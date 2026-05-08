@@ -60,8 +60,8 @@ def query_one(sql: str, params: Sequence[Any] = ()) -> dict[str, Any] | None:
 
 def execute(sql: str, params: Sequence[Any] = ()) -> int:
     with transaction() as conn:
-        cursor = conn.execute(sql, params)
-        return cursor.rowcount
+        result = conn.execute(sql, params)
+        return result.rowcount
 
 
 def execute_many(sql: str, params_list: Sequence[Sequence[Any]]) -> None:
@@ -280,9 +280,9 @@ def run_migrations() -> None:
         conn.executescript(SCHEMA_SQL)
 
 
-def paginate(limit: int, cursor: str | None) -> tuple[int, int]:
+def paginate(limit: int, offset: str | None) -> tuple[int, int]:
     safe_limit = max(1, min(limit, 200))
-    safe_offset = int(cursor or "0")
+    safe_offset = int(offset or "0")
     if safe_offset < 0:
         safe_offset = 0
     return safe_limit, safe_offset

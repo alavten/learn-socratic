@@ -5,20 +5,7 @@
 - User asks to import materials, build a graph, or update existing graph knowledge.
 - Caller has prepared structured graph payload from documents/LLM extraction.
 
-## Inputs
-
-- `graph_id` (required)
-- `payload_file` (required, JSON, must be `structured_payload` object only)
-- Optional `session_context`
-
-## Command Invocation
-
-- Recommended executable format:
-  - `python -m scripts.cli.main ingest-knowledge-graph --graph-id g1 --payload-file ./payload.json`
-  - `python -m scripts.cli.main ingest-knowledge-graph --graph-id g1 --payload-file ./payload.json --sync-mode upsert_and_prune --prune-topic-ids t1,t2`
-  - `python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --payload-file ./remove.json`
-  - `python -m scripts.cli.main list-knowledge-graphs`
-  - `python -m scripts.cli.main get-knowledge-graph --graph-id g1 --concept-limit 20`
+Required context: `graph_id`, `payload_file` (`structured_payload` JSON object only), optional `session_context`.
 
 ## Runtime Execution Chain
 
@@ -49,7 +36,7 @@
 
 ## Escalation Rule
 
-- If validation passes: escalate to plan bootstrap suggestion (`create_learning_plan`).
+- If validation passes: suggest next hop (`learn` or optional `create_learning_plan`).
 - If validation fails: de-escalate to payload repair guidance with concrete field-level fixes.
 
 ## Mode Exit Rule
@@ -61,14 +48,6 @@
 
 - When rejecting relation data, include validation evidence from `validation_summary.errors`.
 - Do not fabricate source evidence; echo payload-level diagnostics only.
-
-## Steps
-
-1. Load JSON payload from `payload_file`.
-2. Call ingest API and capture validation result.
-3. On success, summarize changed entities and revision.
-4. On failure, report failed items and next fix action.
-5. Offer transition to `learn` mode for immediate study.
 
 ## Output
 

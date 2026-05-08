@@ -4,60 +4,28 @@
 
 - User asks for review, recap, spaced repetition, or due revisions.
 
-## Inputs
-
-- `plan_id`
-- Optional `topic_id`
-- `session_context`
-
-## Command Invocation
-
-- Recommended executable format:
-  - `python -m scripts.cli.main get-mode-context --mode review --plan-id PLAN_ID --topic-id t1`
-  - `python -m scripts.cli.main add-interaction-record --context-id PLAN_ID --mode review --concept-id c1 --result correct --score 90 --difficulty-bucket easy`
+Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 ## Runtime Execution Chain
 
 1. Preflight (once per session): `get_api_spec("get_review_context")`.
-2. If `plan_id` missing:
-   - `list_knowledge_graphs()`
-   - `list_learning_plans()`
-   - provide ranked plan/topic start options and ask user to choose
-   - only call `create_learning_plan(graph_id, topic_id?)` after explicit user confirmation
+2. If `plan_id` is missing, route to `shared` for discovery tables and selection first.
 3. Bootstrap review session:
    - `get_review_context(plan_id, topic_id?)`
    - build queue snapshot from candidate scope and ranking policy
 4. Execute one concept turn from queue head.
 5. Persist review result after each concept automatically:
    - `add_interaction_record(plan_id, mode="review", record_payload)`
+   - MUST: after each learner answer is judged, write record immediately before queue advance/next question
 6. Advance queue pointer and generate next concept prompt.
 
-## Session Bootstrap
+## Queue Policy
 
 - Build one queue snapshot at session start; do not re-rank by latest item on every turn.
 - Resolve scope by `plan_id` + optional `topic_id`; do not cross scope when `topic_id` is provided.
-- Seed queue from due tasks, weak-point history, and near-due candidates.
-
-## Candidate Pool
-
-- Include candidate concepts from:
-  1. overdue review tasks
-  2. high forgetting risk states
-  3. recent incorrect concepts (weak points)
-  4. upcoming due concepts in short window
-- Exclude concepts already served in current session, unless retry is required by escalation rule.
-
-## Ranking Policy
-
-- Compute ranked queue with a weighted score from:
-  - overdue pressure
-  - forgetting risk
-  - weak-point/error streak
-  - recency gap
-- Tie-break order:
-  1. earlier `due_at`
-  2. higher forgetting risk
-  3. lower recent accuracy
+- Candidate sources: overdue tasks, high forgetting-risk states, recent incorrect concepts, short-window upcoming items.
+- Exclude concepts already served in current session unless one immediate retry is required.
+- Rank by weighted signal (overdue pressure, forgetting risk, weak-point streak, recency gap); tie-break by earlier `due_at`, then higher risk, then lower recent accuracy.
 - Never use latest-created/latest-updated as primary selector.
 
 ## Turn Contract
@@ -65,8 +33,6 @@
 - One concept-focused review turn at a time unless user asks for recap.
 - Always return `summary` and one actionable `next_step`.
 - Return `next_session_context` so the next call can continue the queue safely.
-
-## Turn Execution
 
 ## AI Execution Directives
 
@@ -81,9 +47,7 @@
 ## Loop Guard
 
 - Maintain `served_concept_ids` for current session and advance queue pointer monotonically.
-- Do not reselect same concept in same session unless:
-  1. current attempt is incorrect, and
-  2. one immediate retry is allowed.
+- Do not reselect same concept in same session unless current attempt is incorrect and one immediate retry is allowed.
 - After one retry, force move to next queue item.
 
 ## Escalation Rule
@@ -108,24 +72,6 @@
 - The explanation must include detailed original-context grounding (key definition/relationship/evidence quotes or close paraphrase).
 - Never skip explanation even when learner answer is correct.
 
-## Spacing Policy Hint
-
-- Convert `forgetting_risk` to review urgency:
-  - `>= 0.7`: immediate review
-  - `0.4 - 0.69`: same session or next short window
-  - `< 0.4`: normal cadence
-
-## Steps
-
-1. Resolve scope and call `get_review_context(plan_id, topic_id?)`.
-2. Build queue snapshot from candidate pool and ranking policy.
-3. Select queue head and ask one retrieval question.
-4. Capture explicit learner attempt and judge from learner answer only.
-5. Provide detailed original-context explanation for this question after judgment.
-6. Automatically write `add_interaction_record(..., mode='review', ...)`.
-7. Update session queue (`served_concept_ids`, pointer advance, retry flags).
-8. Automatically provide next concept question and recommended next review window.
-
 ## Output
 
 - `mode: review`
@@ -139,9 +85,11 @@
 
 - If due items are empty, suggest a light quiz or new learning task.
 - If persistence fails, retain user-visible feedback and retry commit once.
+- Advance queue and emit the next question only after successful record write.
 - If auto-next fetch fails, provide a manual `next_step` fallback prompt for the nearest due concept.
 - If queue construction is incomplete, degrade to overdue-first scan instead of latest-item fallback.
-- If `plan_id` is missing and user does not choose an option, stay in recommendation mode and do not auto-create plan.
+- If `plan_id` is missing, do not run local recommendation logic; route to `shared`.
+- If record write still fails after one retry, do not continue to next concept in current turn.
 
 ## Minimal Record Payload
 

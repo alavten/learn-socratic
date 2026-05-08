@@ -99,14 +99,14 @@ python -m scripts.cli.main list-apis
 
 ## 2) 知识图谱 API
 
-### `list_knowledge_graphs(limit=20, cursor=None)`
+### `list_knowledge_graphs(limit=20, offset=None)`
 
 **请求示例**
 
 ```json
 {
   "limit": 20,
-  "cursor": null
+  "offset": null
 }
 ```
 
@@ -126,11 +126,11 @@ python -m scripts.cli.main list-apis
     }
   ],
   "has_more": false,
-  "cursor": null
+  "next_offset": null
 }
 ```
 
-### `get_knowledge_graph(graph_id, topic_id=None, concept_limit=20, cursor=None)`
+### `get_knowledge_graph(graph_id, topic_id=None, concept_limit=20, offset=None)`
 
 **请求示例**
 
@@ -139,7 +139,7 @@ python -m scripts.cli.main list-apis
   "graph_id": "g1",
   "topic_id": "t1",
   "concept_limit": 20,
-  "cursor": null
+  "offset": null
 }
 ```
 
@@ -160,7 +160,7 @@ python -m scripts.cli.main list-apis
   "topic_concepts": [],
   "concept_briefs": [],
   "has_more": false,
-  "cursor": null
+  "next_offset": null
 }
 ```
 
@@ -305,7 +305,7 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
 }
 ```
 
-### `get_concepts(graph_id, concept_scope, detail='brief', concept_limit=20, cursor=None)`
+### `get_concepts(graph_id, concept_scope, detail='brief', concept_limit=20, offset=None)`
 
 **请求示例**
 
@@ -317,7 +317,7 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
   },
   "detail": "brief",
   "concept_limit": 20,
-  "cursor": null
+  "offset": null
 }
 ```
 
@@ -355,14 +355,14 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
 
 ## 3) 学习计划与上下文 API
 
-### `list_learning_plans(limit=20, cursor=None)`
+### `list_learning_plans(limit=20, offset=None)`
 
 **请求示例**
 
 ```json
 {
   "limit": 20,
-  "cursor": null
+  "offset": null
 }
 ```
 
