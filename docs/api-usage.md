@@ -256,6 +256,9 @@ CLI `--payload-file` 约定：
 - `topic_concepts` 必填：`topic_concept_id / topic_id / concept_id`
 - `concepts` 必填：`concept_id / canonical_name / definition`
   - 错误示例：`name` 代替 `canonical_name`
+- `topics` 必填：`topic_id / topic_name / topic_type`
+  - `topic_type` 仅允许 `chapter` | `section`；缺失或非枚举值会被校验拒收（不会再被静默降级为 `section`）。
+  - 顶层（`parent_topic_id` 为空）建议用 `chapter`；`section` 应挂在 `chapter` 之下，校验器会对违例情况发出 warning。
 
 #### 可选：`sync_mode` / `prune_scope` / `force_delete`
 

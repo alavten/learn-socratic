@@ -12,6 +12,44 @@ ALLOWED_RELATION_TYPES = {
     "related_to",
 }
 ALLOWED_GRAPH_TYPES = {"domain", "module", "view"}
+ALLOWED_TOPIC_TYPES = {"chapter", "section"}
+
+
+def _validate_topic_sort_orders(topics: list[dict[str, Any]], errors: list[str]) -> None:
+    sibling_orders: dict[str | None, list[tuple[int, str, int]]] = {}
+    for idx, topic in enumerate(topics):
+        if not isinstance(topic, dict):
+            continue
+        topic_id = str(topic.get("topic_id") or "")
+        sort_order = topic.get("sort_order")
+        if sort_order is None:
+            errors.append(f"topic[{idx}] missing sort_order")
+            continue
+        if not isinstance(sort_order, int):
+            errors.append(f"topic[{idx}] sort_order must be an integer")
+            continue
+        if sort_order < 1:
+            errors.append(f"topic[{idx}] sort_order must be >= 1")
+            continue
+        parent_key = topic.get("parent_topic_id")
+        sibling_orders.setdefault(parent_key, []).append((sort_order, topic_id, idx))
+
+    for parent_key, rows in sibling_orders.items():
+        if not rows:
+            continue
+        rows.sort(key=lambda item: (item[0], item[1]))
+        observed = [row[0] for row in rows]
+        expected = list(range(1, len(rows) + 1))
+        if len(set(observed)) != len(observed):
+            parent_label = parent_key or "<root>"
+            errors.append(f"topic siblings under '{parent_label}' contain duplicate sort_order")
+            continue
+        if observed != expected:
+            parent_label = parent_key or "<root>"
+            errors.append(
+                f"topic siblings under '{parent_label}' must have continuous sort_order "
+                f"from 1 to {len(rows)}, got {observed}"
+            )
 
 
 def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -105,6 +143,7 @@ def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
         if not concept.get("definition"):
             errors.append(f"concept[{idx}] missing definition")
 
+    topic_type_by_id: dict[str, str] = {}
     for idx, topic in enumerate(topics):
         if not isinstance(topic, dict):
             errors.append(f"topic[{idx}] must be an object")
@@ -113,6 +152,46 @@ def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
             errors.append(f"topic[{idx}] missing topic_id")
         if not topic.get("topic_name"):
             errors.append(f"topic[{idx}] missing topic_name")
+        topic_type = topic.get("topic_type")
+        if not topic_type:
+            errors.append(
+                f"topic[{idx}] missing topic_type (required, one of: "
+                f"{', '.join(sorted(ALLOWED_TOPIC_TYPES))})"
+            )
+        elif topic_type not in ALLOWED_TOPIC_TYPES:
+            allowed = ", ".join(sorted(ALLOWED_TOPIC_TYPES))
+            errors.append(
+                f"topic[{idx}] invalid topic_type '{topic_type}', allowed: [{allowed}]"
+            )
+        elif topic.get("topic_id"):
+            topic_type_by_id[topic["topic_id"]] = topic_type
+
+    _validate_topic_sort_orders(topics, errors)
+
+    # Parent-child sanity: a section parent should not own a chapter child.
+    # Roots (no parent) must not be 'section'; chapters cannot have a 'chapter' parent.
+    for idx, topic in enumerate(topics):
+        if not isinstance(topic, dict):
+            continue
+        topic_type = topic.get("topic_type")
+        parent_id = topic.get("parent_topic_id")
+        if topic_type not in ALLOWED_TOPIC_TYPES:
+            continue
+        if not parent_id:
+            if topic_type != "chapter":
+                warnings.append(
+                    f"topic[{idx}] root topic has topic_type='{topic_type}'; "
+                    "expected 'chapter' for top-level nodes"
+                )
+            continue
+        parent_type = topic_type_by_id.get(parent_id)
+        if parent_type is None:
+            continue
+        if parent_type == "section" and topic_type == "chapter":
+            warnings.append(
+                f"topic[{idx}] chapter '{topic.get('topic_id')}' has section parent "
+                f"'{parent_id}'; chapters should not be nested under sections"
+            )
 
     for idx, relation in enumerate(relations):
         if not isinstance(relation, dict):

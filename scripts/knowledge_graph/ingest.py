@@ -9,9 +9,36 @@ from typing import Any
 from scripts.foundation.storage import transaction
 from scripts.knowledge_graph.validate import validate_structured_payload
 
+CHAPTER1_TOPIC_ORDER_HINTS: dict[str, int] = {
+    "cc-ch1-unstable-model": 1,
+    "cc-ch1-harness-intro": 2,
+}
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _reindex_topic_orders(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[str | None, list[dict[str, Any]]] = {}
+    for topic in topics:
+        groups.setdefault(topic.get("parent_topic_id"), []).append(dict(topic))
+
+    reindexed: list[dict[str, Any]] = []
+    for parent_id, grouped_topics in groups.items():
+        ordered = sorted(
+            grouped_topics,
+            key=lambda item: (
+                CHAPTER1_TOPIC_ORDER_HINTS.get(item.get("topic_id", ""), 10_000),
+                int(item.get("sort_order", 0)),
+                item.get("topic_id", ""),
+            ),
+        )
+        for idx, topic in enumerate(ordered, start=1):
+            topic["parent_topic_id"] = parent_id
+            topic["sort_order"] = idx
+            reindexed.append(topic)
+    return reindexed
 
 
 def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -27,7 +54,7 @@ def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, 
 
     now = _now()
     graph = payload.get("graph", {})
-    topics = payload.get("topics", [])
+    topics = _reindex_topic_orders(payload.get("topics", []))
     concepts = payload.get("concepts", [])
     topic_concepts = payload.get("topic_concepts", [])
     relations = payload.get("relations", [])
@@ -96,7 +123,7 @@ def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, 
                         graph_id,
                         topic.get("parent_topic_id"),
                         topic["topic_name"],
-                        topic.get("topic_type", "section"),
+                        topic["topic_type"],
                         topic.get("sort_order", 0),
                         topic.get("status", "active"),
                     ),

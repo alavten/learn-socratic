@@ -73,7 +73,7 @@ def list_learning_plans(limit: int = 20, offset: str | None = None) -> dict[str,
             FROM LearningPlanTopic
             JOIN Topic t ON t.topicId = LearningPlanTopic.topicId
             WHERE learningPlanId = ?
-            ORDER BY LearningPlanTopic.createdAt ASC
+            ORDER BY t.sortOrder ASC, t.topicId ASC, LearningPlanTopic.createdAt ASC
             """,
             (row["plan_id"],),
         )

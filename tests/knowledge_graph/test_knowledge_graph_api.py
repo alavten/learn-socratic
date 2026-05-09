@@ -28,3 +28,52 @@ def test_get_graph_and_concept_queries(isolated_db):
     assert relations["relation_briefs"][0]["relation_type"] == "prerequisite_of"
     evidence = get_concept_evidence("g1", {"concept_ids": ["c1"]})
     assert evidence["evidence_summary"][0]["evidence_id"] == "e1"
+
+
+def test_ingest_rejects_non_continuous_topic_sort_order(isolated_db):
+    payload = sample_graph_payload()
+    payload["topics"] = [
+        {"topic_id": "t1", "topic_name": "Syntax", "topic_type": "chapter", "sort_order": 1},
+        {"topic_id": "t2", "topic_name": "Functions", "topic_type": "chapter", "sort_order": 3},
+    ]
+    result = ingest_knowledge_graph("g1", payload)
+    assert result["validation_summary"]["ok"] is False
+    assert "continuous sort_order" in " ".join(result["validation_summary"]["errors"])
+
+
+def test_ingest_reindexes_chapter1_priority_topics(isolated_db):
+    payload = sample_graph_payload()
+    payload["topics"] = [
+        {
+            "topic_id": "cc-ch1-harness-intro",
+            "topic_name": "Harness Engineering 概述",
+            "topic_type": "chapter",
+            "sort_order": 1,
+        },
+        {
+            "topic_id": "cc-ch1-unstable-model",
+            "topic_name": "模型不可信前提",
+            "topic_type": "chapter",
+            "sort_order": 2,
+        },
+    ]
+    payload["topic_concepts"] = [
+        {
+            "topic_concept_id": "tc1",
+            "topic_id": "cc-ch1-harness-intro",
+            "concept_id": "c1",
+            "role": "core",
+            "rank": 1,
+        },
+        {
+            "topic_concept_id": "tc2",
+            "topic_id": "cc-ch1-unstable-model",
+            "concept_id": "c2",
+            "role": "core",
+            "rank": 1,
+        },
+    ]
+    ingest_knowledge_graph("g1", payload)
+    graph = get_knowledge_graph("g1")
+    topic_ids = [topic["topic_id"] for topic in graph["topics"]]
+    assert topic_ids[:2] == ["cc-ch1-unstable-model", "cc-ch1-harness-intro"]

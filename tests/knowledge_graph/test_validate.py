@@ -159,3 +159,50 @@ def test_validate_relation_requires_at_least_one_evidence_link():
 
     assert result["ok"] is False
     assert "relation r1 has no evidence link" in result["errors"]
+
+
+def test_validate_topic_requires_topic_type():
+    payload = sample_graph_payload()
+    payload["topics"][0].pop("topic_type")
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    joined = " ".join(result["errors"])
+    assert "topic[0] missing topic_type" in joined
+    assert "chapter" in joined and "section" in joined
+
+
+def test_validate_topic_type_must_be_allowed_value():
+    payload = sample_graph_payload()
+    payload["topics"][0]["topic_type"] = "Chapter"
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "topic[0] invalid topic_type 'Chapter'" in " ".join(result["errors"])
+
+
+def test_validate_section_root_topic_emits_warning():
+    payload = sample_graph_payload()
+    payload["topics"][0]["topic_type"] = "section"
+    payload["topics"][0]["parent_topic_id"] = None
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is True
+    joined = " ".join(result["warnings"])
+    assert "root topic has topic_type='section'" in joined
+
+
+def test_validate_chapter_under_section_emits_warning():
+    payload = sample_graph_payload()
+    payload["topics"][0]["topic_type"] = "section"
+    payload["topics"][1]["topic_type"] = "chapter"
+    payload["topics"][1]["parent_topic_id"] = "t1"
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is True
+    joined = " ".join(result["warnings"])
+    assert "chapters should not be nested under sections" in joined

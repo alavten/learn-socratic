@@ -277,11 +277,15 @@ API_SPECS: dict[str, dict[str, Any]] = {
                             "type": "array",
                             "items": {
                                 "type": "object",
-                                "required": ["topic_id", "topic_name"],
+                                "required": ["topic_id", "topic_name", "topic_type"],
                                 "properties": {
                                     "topic_id": {"type": "string"},
                                     "topic_name": {"type": "string"},
-                                    "topic_type": {"type": "string"},
+                                    "parent_topic_id": {"type": ["string", "null"]},
+                                    "topic_type": {
+                                        "type": "string",
+                                        "enum": ["chapter", "section"],
+                                    },
                                     "sort_order": {"type": "integer"},
                                 },
                                 "additionalProperties": False,

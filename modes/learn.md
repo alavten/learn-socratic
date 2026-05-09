@@ -12,8 +12,9 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 2. If `plan_id` is missing, route to `shared` for discovery tables and selection first.
 3. Fetch learn prompt context after explicit user selection:
    - `get_learn_context(plan_id, topic_id?)`
-4. Run Socratic teaching interaction with returned `prompt_text`.
-5. Persist learning record for this turn:
+4. Reconcile before a new round: if the prior interaction completed a concept check (learner answer received and verdict given) but `add_interaction_record` did not succeed for that check, flush it now. Do not issue new explanation or a new check until this pending record is written or recovery is surfaced per Retry / Fallback.
+5. Run Socratic teaching interaction with returned `prompt_text`.
+6. Persist learning record for this turn when its concept check completes:
    - `add_interaction_record(plan_id, mode="learn", record_payload)`
    - minimum: `record_payload={"concept_id": "...", "result": "ok|partial|blocked"}`
    - recommended: include `score`, `difficulty_bucket`, and `latency_ms` for later quiz/review scheduling

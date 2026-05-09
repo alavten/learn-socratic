@@ -189,7 +189,7 @@ erDiagram
 | `graphId`       | 节点所属图标识。             |
 | `parentTopicId` | 父节点标识。                 |
 | `topicName`     | 节点名称。                   |
-| `topicType`     | 节点类型（章、节、单元等）。 |
+| `topicType`     | 节点类型，必填，枚举：`chapter`（章/根级节点）、`section`（节/子节点）。校验时为强制字段，缺失或非枚举值会被 `validate_structured_payload` 拒收。 |
 | `sortOrder`     | 同层级排序值。               |
 | `status`        | 节点状态。                   |
 

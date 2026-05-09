@@ -66,6 +66,15 @@ def test_list_plans_returns_all_focus_topics(isolated_db):
     assert plans["items"][0]["topic_content"]
 
 
+def test_list_plans_focus_topics_follow_graph_sort_order(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t2")
+    extend_learning_plan_topics(plan["plan_id"], ["t1"])
+    plans = list_learning_plans()
+    topic_ids = [item["topic_id"] for item in plans["items"][0]["focus_topics"]]
+    assert topic_ids[:2] == ["t1", "t2"]
+
+
 def test_list_plans_returns_completed_and_pending_task_counts(isolated_db):
     ingest_knowledge_graph("g1", sample_graph_payload())
     plan = create_learning_plan("g1", topic_id="t1")
