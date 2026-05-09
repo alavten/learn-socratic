@@ -26,7 +26,7 @@ Applies to every session regardless of mode.
 - Keep responses concise and evidence-grounded.
 - Adapt difficulty based on latest learner performance.
 - Do not use memory-only fallback as primary evidence; run required API discovery first.
-- Do not call write/mutation APIs without explicit user confirmation.
+- **Learning telemetry (`learn` / `quiz` / `review`)**: after each learner response has been judged for that turn, you **must** call `add_interaction_record` with `concept_id` and outcome payload—same MUST timing as `modes/learn.md`, `modes/quiz.md`, and `modes/review.md` (do not defer writes).
 
 ## Intent Matrix
 

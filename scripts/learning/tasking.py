@@ -257,9 +257,40 @@ def sync_task_status_from_result(
                 "status": "completed",
                 "mastery_score": mastery_score,
             }
+        # Successful outcome but no pending/completed row yet — persist a completed snapshot so plan progress counts match records.
+        dt = _now()
+        task_id = str(uuid.uuid4())
+        forgetting = float(state_summary.get("forgetting_risk", 1.0))
+        task_type = "review" if forgetting > 0.35 else "learn"
+        insert_sql = """
+            INSERT INTO LearningTask(
+                learningTaskId, learningPlanId, conceptId, taskType, reasonType, strategy,
+                priorityScore, dueAt, generatedAt, batchId, status, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        insert_args = (
+            task_id,
+            learning_plan_id,
+            concept_id,
+            task_type,
+            "weak_point",
+            "record_completion_snapshot",
+            0.5,
+            None,
+            dt.isoformat(),
+            dt.strftime("%Y%m%d%H"),
+            "completed",
+            dt.isoformat(),
+            dt.isoformat(),
+        )
+        if conn is not None:
+            conn.execute(insert_sql, insert_args)
+        else:
+            with transaction() as tx:
+                tx.execute(insert_sql, insert_args)
         return {
-            "status_action": "no_task_to_complete",
-            "learning_task_id": None,
+            "status_action": "inserted_completed",
+            "learning_task_id": task_id,
             "status": "completed",
             "mastery_score": mastery_score,
         }

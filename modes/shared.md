@@ -37,6 +37,7 @@ When user asks to learn a specific chapter/section/topic (for example, "学第3�
 1. Prefer existing `plan_id` if user picks a plan; otherwise pick `graph_id`, then narrow to `topic_id` if needed.
 2. If multiple candidates exist, present short options and ask user to choose exactly one.
 3. After selection, hand off to `learn` (or `review/quiz` if user explicitly requests).
+4. When the learner moves from one chapter to another under the same plan/graph (multi-chapter progression), call **`extend_learning_plan_topics(plan_id, [new_topic_id, ...])`** after resolving chapter IDs so `get_learning_context` scope and plan summaries stay accurate (unless those topics are already linked).
 
 ### Learning record correction
 

@@ -20,7 +20,7 @@ def _setup():
 @pytest.mark.parametrize(
     ("score", "expected_mastery"),
     [
-        (None, 0.6),
+        (None, 0.8),
         (-10, 0.0),
         (0.88, 0.88),
         (40, 0.4),

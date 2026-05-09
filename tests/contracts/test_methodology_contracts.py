@@ -53,6 +53,14 @@ def test_shared_and_learn_require_discovery_snapshot_and_dual_tables():
     assert "discovery tables" in learn.lower()
 
 
+def test_skill_requires_interaction_record_and_has_no_global_write_gate():
+    content = _read(_root() / "SKILL.md")
+    lowered = content.lower()
+    assert "do not call write/mutation apis without explicit user confirmation" not in lowered
+    assert "add_interaction_record" in content
+    assert "learning telemetry" in lowered
+
+
 def test_modes_require_per_turn_record_write_and_no_progress_on_write_failure():
     root = _root() / "modes"
     learn = _read(root / "learn.md")

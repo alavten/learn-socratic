@@ -87,6 +87,10 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 - `difficulty_bucket` (`easy|medium|hard`, recommended)
 - `latency_ms` (optional)
 
+When `result` is `partial` or `blocked`, prefer an explicit **low** `score` (ratio roughly **≤0.55** for partial, **≤0.35** for blocked, or equivalent percent); omitting `score` still yields low mastery defaults server-side.
+
+When the learner expands to additional chapters or sections under the same graph, call `extend_learning_plan_topics(plan_id, topic_ids)` so prompt scope and plan metadata stay aligned with the chapters being studied.
+
 ## Next Hop
 
 - Continue learn, or route to quiz/review through `SKILL.md`.

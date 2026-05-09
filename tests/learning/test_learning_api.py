@@ -11,6 +11,7 @@ from scripts.learning.api import (
     get_review_context,
     list_learning_plans,
 )
+from scripts.learning.validation import LearningPayloadError
 from scripts.foundation.storage import transaction
 from scripts.knowledge_graph.api import ingest_knowledge_graph
 from tests.helpers import sample_graph_payload
@@ -253,3 +254,67 @@ def test_add_interaction_record_rolls_back_on_state_failure(isolated_db, monkeyp
             (plan["plan_id"],),
         ).fetchone()["cnt"]
     assert record_count == 0
+
+
+def test_list_learning_plans_progress_includes_concepts_and_records(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+    add_interaction_record(
+        plan["plan_id"],
+        "quiz",
+        {
+            "concept_id": "c1",
+            "result": "correct",
+            "score": 90,
+            "difficulty_bucket": "medium",
+        },
+    )
+    plans = list_learning_plans()
+    prog = plans["items"][0]["progress"]
+    assert prog["concepts_touched"] >= 1
+    assert prog["records_by_mode"]["quiz"] >= 1
+    assert prog["records_by_mode"]["learn"] == 0
+
+
+def test_add_interaction_record_invalid_mode_raises(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+    with pytest.raises(LearningPayloadError) as excinfo:
+        add_interaction_record(plan["plan_id"], "invalid", {"concept_id": "c1"})
+    assert excinfo.value.code == "invalid_mode"
+
+
+def test_add_interaction_record_blocked_with_high_score_rejected(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+    with pytest.raises(LearningPayloadError) as excinfo:
+        add_interaction_record(
+            plan["plan_id"],
+            "quiz",
+            {"concept_id": "c1", "result": "blocked", "score": 95},
+        )
+    assert excinfo.value.code == "score_result_mismatch"
+
+
+def test_add_interaction_record_inserts_completed_when_no_prior_task(isolated_db, monkeypatch):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+
+    from scripts.learning import api as learning_api_module
+
+    def _noop_upsert(**_: object) -> dict[str, object]:
+        return {"task_action": "skipped"}
+
+    monkeypatch.setattr(learning_api_module, "upsert_task_for_state", _noop_upsert)
+
+    result = add_interaction_record(
+        plan["plan_id"],
+        "quiz",
+        {
+            "concept_id": "c1",
+            "result": "correct",
+            "score": 92,
+            "difficulty_bucket": "medium",
+        },
+    )
+    assert result["task_status_delta_summary"]["status_action"] == "inserted_completed"

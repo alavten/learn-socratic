@@ -465,8 +465,32 @@ API_SPECS: dict[str, dict[str, Any]] = {
                     "required": ["concept_id"],
                     "properties": {
                         "concept_id": {"type": "string", "minLength": 1},
-                        "result": {"type": "string"},
-                        "score": {"type": "number"},
+                        "result": {
+                            "type": "string",
+                            "enum": [
+                                "ok",
+                                "partial",
+                                "blocked",
+                                "correct",
+                                "wrong",
+                                "pass",
+                                "fail",
+                                "incorrect",
+                            ],
+                            "description": (
+                                "Learner outcome. Success-like values feed mastery upward when paired with score; "
+                                "`partial`/`blocked` must carry low scores (≤0.55 / ≤0.35 ratio, or equivalent percent) "
+                                "and are rejected by the domain validator if contradictions occur."
+                            ),
+                        },
+                        "score": {
+                            "type": "number",
+                            "description": (
+                                "Optional mastery signal: send 0–100 for percent or 0–1 for ratio "
+                                "(values above 1 are treated as percent). When omitted, defaults depend on `result` "
+                                "(e.g. ok/correct/pass → 0.8; partial/blocked → low defaults server-side)."
+                            ),
+                        },
                         "difficulty_bucket": {"type": "string", "enum": ["easy", "medium", "hard"]},
                         "latency_ms": {"type": "integer", "minimum": 0},
                     },

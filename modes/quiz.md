@@ -81,6 +81,8 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 - `difficulty_bucket` (`easy|medium|hard`, recommended)
 - `latency_ms` (optional)
 
+**Partial / blocked scoring**: use `partial` or `blocked` when the learner answer is ambiguous or missing; pair them with **low** scores (ratio **≤0.55** / **≤0.35** respectively, or equivalent percent). Contradictory payloads (e.g. `blocked` + near-perfect score) are rejected by validation.
+
 ## Next Hop
 
 - Route to learn for weak points or review for due items.

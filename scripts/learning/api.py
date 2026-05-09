@@ -11,6 +11,7 @@ from scripts.knowledge_graph import api as kg_api
 from scripts.learning.session import add_interaction_record as append_record_impl
 from scripts.learning.state import update_state_from_record
 from scripts.learning.tasking import sync_task_status_from_result, upsert_task_for_state
+from scripts.learning.validation import validate_add_interaction_record
 
 
 def _now() -> str:
@@ -54,6 +55,33 @@ def list_learning_plans(limit: int = 20, offset: str | None = None) -> dict[str,
                 FROM LearningTask lt
                 WHERE lt.learningPlanId = lp.learningPlanId AND lt.status IN ('completed', 'done')
             ) AS completed_tasks
+            ,
+            (
+                SELECT COUNT(DISTINCT lcs.conceptId)
+                FROM LearnerConceptState lcs
+                WHERE lcs.learningPlanId = lp.learningPlanId
+            ) AS concepts_touched
+            ,
+            (
+                SELECT COUNT(*)
+                FROM LearningRecord lr
+                JOIN LearningSession ls ON ls.sessionId = lr.sessionId
+                WHERE ls.learningPlanId = lp.learningPlanId AND lr.recordType = 'learn'
+            ) AS records_learn
+            ,
+            (
+                SELECT COUNT(*)
+                FROM LearningRecord lr
+                JOIN LearningSession ls ON ls.sessionId = lr.sessionId
+                WHERE ls.learningPlanId = lp.learningPlanId AND lr.recordType = 'quiz'
+            ) AS records_quiz
+            ,
+            (
+                SELECT COUNT(*)
+                FROM LearningRecord lr
+                JOIN LearningSession ls ON ls.sessionId = lr.sessionId
+                WHERE ls.learningPlanId = lp.learningPlanId AND lr.recordType = 'review'
+            ) AS records_review
         FROM LearningPlan lp
         ORDER BY lp.updatedAt DESC
         LIMIT ? OFFSET ?
@@ -63,9 +91,17 @@ def list_learning_plans(limit: int = 20, offset: str | None = None) -> dict[str,
     has_more = len(rows) > page_limit
     visible = rows[:page_limit]
     for row in visible:
+        concepts_touched = row.pop("concepts_touched")
+        records_by_mode = {
+            "learn": row.pop("records_learn"),
+            "quiz": row.pop("records_quiz"),
+            "review": row.pop("records_review"),
+        }
         row["progress"] = {
             "completed_tasks": row["completed_tasks"],
             "pending_tasks": row["pending_tasks"],
+            "concepts_touched": concepts_touched,
+            "records_by_mode": records_by_mode,
         }
         row["focus_topics"] = query_all(
             """
@@ -635,6 +671,7 @@ def add_interaction_record(
     mode: str,
     record_payload: dict[str, Any],
 ) -> dict[str, Any]:
+    validate_add_interaction_record(plan_id, mode, record_payload)
     with transaction() as conn:
         commit = append_record_impl(plan_id, mode, record_payload, conn=conn)
         state_delta = update_state_from_record(

@@ -113,3 +113,37 @@ def test_update_state_existing_row_uses_weighted_mastery_and_increments(isolated
     assert row["medium_count"] == 1
     assert row["wrong_count"] == 1
     assert row["confidence"] == pytest.approx(0.91)
+
+
+def test_partial_and_blocked_use_low_defaults_when_score_missing(isolated_db):
+    learner_id, plan_id = _setup_plan_and_learner()
+
+    partial_state = update_state_from_record(
+        learner_id=learner_id,
+        learning_plan_id=plan_id,
+        concept_id="c1",
+        mode="quiz",
+        record_payload={"result": "partial"},
+    )
+    assert partial_state["mastery_score"] == pytest.approx(0.35)
+
+    blocked_state = update_state_from_record(
+        learner_id=learner_id,
+        learning_plan_id=plan_id,
+        concept_id="c2",
+        mode="quiz",
+        record_payload={"result": "blocked"},
+    )
+    assert blocked_state["mastery_score"] == pytest.approx(0.15)
+
+
+def test_ok_without_score_uses_success_default(isolated_db):
+    learner_id, plan_id = _setup_plan_and_learner()
+    state = update_state_from_record(
+        learner_id=learner_id,
+        learning_plan_id=plan_id,
+        concept_id="c1",
+        mode="learn",
+        record_payload={"result": "ok"},
+    )
+    assert state["mastery_score"] == pytest.approx(0.8)

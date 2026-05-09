@@ -360,6 +360,11 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
 
 ### `list_learning_plans(limit=20, offset=None)`
 
+**进度语义**：每条计划里的 `progress.completed_tasks` / `progress.pending_tasks` 统计 **LearningTask** 队列状态（不是「已学完章节数」）。同一字段中还包含：
+
+- `progress.concepts_touched`：该计划下已有掌握状态行的 **distinct 概念数**；
+- `progress.records_by_mode`：`LearningRecord` 按 `learn` / `quiz` / `review` 的条数汇总。
+
 **请求示例**
 
 ```json
@@ -479,6 +484,10 @@ python -m scripts.cli.main get-mode-context --mode review \
 
 `mode` 取值：`learn` / `quiz` / `review`
 
+**入参校验（领域层）**：写入前会校验 `plan_id` 存在、`mode` 合法、`concept_id` 必填、`result`（若提供）在白名单、`score` 在合法区间且不与 `partial`/`blocked` 矛盾、`difficulty_bucket`/`latency_ms` 合法。失败抛出 `LearningPayloadError`（`code` + `message`）；编排层经 JSON Schema 校验的请求也应与之对齐。
+
+**分数**：`score` 可为 **0–100（百分制）** 或 **0–1（比例）**。省略时按 `result` 推断默认（例如 `ok`/`correct`/`pass` 偏高，`partial`/`blocked` 偏低）。
+
 当 `mode=review` 时，调用方应在用户作答后输出：
 - `detailed_explanation`：本题的详细原文依据解释（定义/关系/证据）
 - `next_question`：队列推进后的下一题题目
@@ -532,6 +541,7 @@ python -m scripts.cli.main get-mode-context --mode review \
 ## 6) 常见错误
 
 - 缺少必填参数：抛出 `ValueError`，例如 `missing_required_fields: ['graph_id']`
+- **学习记录**：`plan_not_found`、`invalid_mode`、`missing_concept_id`、`invalid_result`、`score_out_of_range`、`score_result_mismatch`（`blocked`/`partial` 与过高分数）、`invalid_difficulty_bucket`、`invalid_latency_ms`（见 `scripts.learning.validation.LearningPayloadError`）
 - API 名不存在：`unknown_api: <api_name>`
 - 提交非法模式：`invalid_mode`
 - 图谱录入校验失败：`validation_summary.ok = false`，错误详见 `validation_summary.errors`
