@@ -1,7 +1,81 @@
 # learn-socratic
 
-Doc-socratic learning skill with four primary modes:
+面向「文档 → 知识图谱 → 新学 / 测验 / 复习」的苏格拉底式学习技能。由 Agent 按 `SKILL.md` 路由，并在各模式的契约文件（`modes/*.md`）下执行。
 
-- ingest / learn / quiz / review
+## 适用场景
 
-The runtime flow is routed by `SKILL.md` and executed through `modes/*.md` contracts.
+适合说法例如：教我、讲解、做题、考我、复习、遗忘曲线、备考、抽背等。技能会把学习与图谱内容对齐，并在可能时引用证据与概念关系，而不是仅凭对话记忆编造。
+
+## 你将经历的一次会话
+
+- **每次用户发言原则上只跑一种主模式**（`ingest` / `learn` / `quiz` / `review`）；意图不清或缺参数时用 `shared` 做一轮澄清再切回主模式。
+- **会话开始**：应能看到当前 `mode` 和一条可执行的 `next_step`。
+- **会话中**：回复宜包含 **`summary`（本轮小结）** 和 **`next_step`（下一步建议）**，并保持简洁、有据可依。
+- **难度**：会参考你最近的表现调整；不要指望助手在没有拉取上下文的情况下「凭空」引用图谱细节——需要先完成约定的上下文获取流程。
+- **写入类操作**：涉及修改图谱、写入学习记录等，应在你有明确确认后再执行（技能契约要求）。
+
+## 五种模式怎么选
+
+用你的说法对照目标模式（详细规则见对应 `modes/*.md`）：
+
+| 你想做的事 | 模式 | 契约文件 |
+| --- | --- | --- |
+| 导入材料、建图、更新图谱 | `ingest` | `modes/ingest.md` |
+| 讲解、带我理解 | `learn` | `modes/learn.md` |
+| 测验、考我、出题 | `quiz` | `modes/quiz.md` |
+| 复习、背诵、到期巩固 | `review` | `modes/review.md` |
+| 意图模糊、缺学习计划/图谱、或要从失败里恢复 | `shared` | `modes/shared.md` |
+
+路由习惯：
+
+1. 说不清想学什么、或和其他意图冲突 → 先到 **`shared`** 澄清。
+2. 中途换目标（例如从讲解改成测验）→ 先回到 **`SKILL.md` 的意图表**，再进入新模式。
+3. 若目标模式的契约无法执行 → `summary` 说明原因，`next_step` 引导回到 **`shared`** 或其它可行模式。
+
+## 各模式：你需要什么、会得到什么
+
+### `ingest`（导入图谱）
+
+- **适合**：已有「结构化图谱载荷」JSON，要写入或更新某个 `graph_id` 下的知识图谱。
+- **你需要**：`graph_id`、载荷文件路径（仅内含 `structured_payload` 对象，不要外层再包一层 `graph_id`）。
+- **结果**：校验通过则有版本与变更摘要；失败则给出可操作的字段级修正提示。成功后常可接着创建学习计划或进入 **`learn`**。
+
+### `learn`（新学）
+
+- **适合**：按计划在图谱范围内逐个概念讲解与追问。
+- **你需要**：**`plan_id`**（必选）；可选 **`topic_id`**、会话延续用的 **`session_context`**。
+- **若还没有 `plan_id`**：应先走 **`shared`**，从图谱与学习计划中选好再继续。
+- **学习节奏**：一轮通常只紧扣一个概念簇、至多一个核心检查；检查评判后会写入学习轨迹（失败时应先补写再推进下一题）。详见 `modes/learn.md`。
+
+### `quiz`（测验）
+
+- **适合**：要做题、检验掌握程度。
+- **你需要**：**`plan_id`**；可选 **`topic_id`**、`session_context`。
+- **节奏**：一次一问；判定后再解释；写入记录后再下一题（写入失败则同一轮不强行塞下一题）。详见 `modes/quiz.md`。
+
+### `review`（复习）
+
+- **适合**：到期项、薄弱点、间隔复习式巩固。
+- **你需要**：**`plan_id`**；可选 **`topic_id`**、`session_context`（用于延续复习队列）。
+- **节奏**：按复习队列逐个概念推进；每次判定后写记录再前进；应带回 **`next_session_context`** 供下一轮接续。详见 `modes/review.md`。
+
+### `shared`（澄清与恢复）
+
+- **适合**：缺少计划/图谱、意图冲突、要改学习记录、或上一模式异常中断后的恢复。
+- **典型流程**：拉取图谱列表与待处理学习计划，用两张表展示后，**请你先选计划或图谱（而不是先猜模式）**，再交给路由器选 `ingest` / `learn` / `quiz` / `review`。
+- **章节/主题**：若你指定某章某节，会在候选里收窄并选定后再交给 **`learn`**（或你明确要求的 **`quiz`/`review`**）。
+
+## 本地命令行（可选）
+
+在技能目录下可用 CLI 拉取某模式的编排上下文（便于自检或脚本对接），例如：
+
+```bash
+python -m scripts.cli.main get-mode-context --mode learn --plan-id PLAN_ID --topic-id TOPIC_ID
+```
+
+常用参数提示：`--mode` 取 `ingest|learn|quiz|review`；`ingest` 场景还需 `--graph-id`、`--payload-file` 等（与 `SKILL.md` 中 CLI Hints 一致）。
+
+## 进一步阅读
+
+- 总路由与意图表：**`SKILL.md`**
+- 各模式字段、顺序约束与异常处理：**`modes/*.md`**
