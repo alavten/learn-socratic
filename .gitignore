@@ -65,3 +65,4 @@ temp/
 *.pid
 .cache/
 payloads
+data/skill.sqlite3
