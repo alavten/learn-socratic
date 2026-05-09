@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -11,7 +12,7 @@ from scripts.knowledge_graph import api as kg_api
 from scripts.learning.session import add_interaction_record as append_record_impl
 from scripts.learning.state import update_state_from_record
 from scripts.learning.tasking import sync_task_status_from_result, upsert_task_for_state
-from scripts.learning.validation import validate_add_interaction_record
+from scripts.learning.validation import LearningPayloadError, validate_add_interaction_record
 
 
 def _now() -> str:
@@ -672,35 +673,41 @@ def add_interaction_record(
     record_payload: dict[str, Any],
 ) -> dict[str, Any]:
     validate_add_interaction_record(plan_id, mode, record_payload)
-    with transaction() as conn:
-        commit = append_record_impl(plan_id, mode, record_payload, conn=conn)
-        state_delta = update_state_from_record(
-            learner_id=commit["learner_id"],
-            learning_plan_id=plan_id,
-            concept_id=commit["concept_id"],
-            mode=mode,
-            record_payload=record_payload,
-            conn=conn,
-        )
-        task_delta = upsert_task_for_state(
-            learning_plan_id=plan_id,
-            concept_id=commit["concept_id"],
-            state_summary=state_delta,
-            last_result=record_payload.get("result"),
-            conn=conn,
-        )
-        task_status_delta = sync_task_status_from_result(
-            learning_plan_id=plan_id,
-            concept_id=commit["concept_id"],
-            state_summary=state_delta,
-            last_result=record_payload.get("result"),
-            conn=conn,
-        )
-        plan_updated_at = _now()
-        conn.execute(
-            "UPDATE LearningPlan SET updatedAt = ? WHERE learningPlanId = ?",
-            (plan_updated_at, plan_id),
-        )
+    try:
+        with transaction() as conn:
+            commit = append_record_impl(plan_id, mode, record_payload, conn=conn)
+            state_delta = update_state_from_record(
+                learner_id=commit["learner_id"],
+                learning_plan_id=plan_id,
+                concept_id=commit["concept_id"],
+                mode=mode,
+                record_payload=record_payload,
+                conn=conn,
+            )
+            task_delta = upsert_task_for_state(
+                learning_plan_id=plan_id,
+                concept_id=commit["concept_id"],
+                state_summary=state_delta,
+                last_result=record_payload.get("result"),
+                conn=conn,
+            )
+            task_status_delta = sync_task_status_from_result(
+                learning_plan_id=plan_id,
+                concept_id=commit["concept_id"],
+                state_summary=state_delta,
+                last_result=record_payload.get("result"),
+                conn=conn,
+            )
+            plan_updated_at = _now()
+            conn.execute(
+                "UPDATE LearningPlan SET updatedAt = ? WHERE learningPlanId = ?",
+                (plan_updated_at, plan_id),
+            )
+    except sqlite3.IntegrityError as exc:
+        raise LearningPayloadError(
+            "db_constraint_failed",
+            f"database constraint failed while writing learning record: {exc}",
+        ) from exc
     return {
         "commit_result": commit,
         "state_delta_summary": state_delta,

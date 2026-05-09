@@ -12,13 +12,18 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 2. If `plan_id` is missing, route to `shared` for discovery tables and selection first.
 3. Fetch learn prompt context after explicit user selection:
    - `get_learn_context(plan_id, topic_id?)`
-4. Reconcile before a new round: if the prior interaction completed a concept check (learner answer received and verdict given) but `add_interaction_record` did not succeed for that check, flush it now. Do not issue new explanation or a new check until this pending record is written or recovery is surfaced per Retry / Fallback.
+4. Reconcile before a new round: if the prior turn taught a concept or judged a concept check but `add_interaction_record` did not succeed, flush the pending taught concept record or judged answer record now. Do not issue new explanation or a new check until the pending record is written or recovery is surfaced per Retry / Fallback.
 5. Run Socratic teaching interaction with returned `prompt_text`.
-6. Persist learning record for this turn when its concept check completes:
+6. Persist a learning record after each concept is taught:
+   - `add_interaction_record(plan_id, mode="learn", record_payload)`
+   - minimum: `record_payload={"concept_id": "...", "result": "partial"}`
+   - recommended: include a conservative `score` and `difficulty_bucket` so exposure is tracked without treating explanation text as mastery evidence
+   - MUST: after each concept is taught, write record immediately before any next concept/question/mode handoff
+7. Persist another learning record when its concept check is judged:
    - `add_interaction_record(plan_id, mode="learn", record_payload)`
    - minimum: `record_payload={"concept_id": "...", "result": "ok|partial|blocked"}`
    - recommended: include `score`, `difficulty_bucket`, and `latency_ms` for later quiz/review scheduling
-   - MUST: after each concept check answer is received, write record immediately before any next concept/question
+   - MUST: after each concept check answer is received and judged, write record immediately before any next concept/question/mode handoff
 
 ## Turn Contract
 
@@ -29,6 +34,7 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 - Do not infer learner mastery from system explanation content.
 - Enforce concept lock per turn: explanation, check question, and verdict must all target the same `anchor_concept_id`.
 - Do not introduce a new assessed concept in the same turn.
+- Do not introduce any next concept until the taught concept record and any judged answer record for the current `anchor_concept_id` have succeeded or recovery is surfaced.
 
 ## AI Execution Directives
 
@@ -77,7 +83,7 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 - If `plan_id` is missing, do not run local recommendation logic; route to `shared`.
 - If context retrieval fails, ask user for plan/topic confirmation.
-- If write fails, do not advance to next concept/question; retry once and return explicit recovery `next_step`.
+- If write fails, do not advance to next concept/question/mode handoff; retry once and return explicit recovery `next_step`.
 
 ## Minimal Record Payload
 
@@ -88,6 +94,8 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 - `latency_ms` (optional)
 
 When `result` is `partial` or `blocked`, prefer an explicit **low** `score` (ratio roughly **≤0.55** for partial, **≤0.35** for blocked, or equivalent percent); omitting `score` still yields low mastery defaults server-side.
+
+Multiple records for the same `concept_id` are valid append-only learning events. Do not collapse taught concept records and judged answer records into one record when both events occurred.
 
 When the learner expands to additional chapters or sections under the same graph, call `extend_learning_plan_topics(plan_id, topic_ids)` so prompt scope and plan metadata stay aligned with the chapters being studied.
 

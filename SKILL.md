@@ -23,10 +23,12 @@ Applies to every session regardless of mode.
 - One primary mode per user turn; use `shared` only for clarification/recovery.
 - Follow exactly one active mode contract (`shared`/`ingest`/`learn`/`quiz`/`review`) per turn; never mix per-mode rules.
 - Keep this file thin: mode-specific fields/steps live only in mode contract files.
+- Do not use memory-only fallback as primary evidence; run required API discovery first.
+- **Learning telemetry is mandatory** for `learn` / `quiz` / `review`.
+- After each taught concept or judged learner answer, immediately call `add_interaction_record` with `concept_id` and outcome payload.
+- Do not introduce the next concept, emit the next question, advance a review queue, or hand off modes until the previous record write succeeds or recovery is surfaced.
 - Keep responses concise and evidence-grounded.
 - Adapt difficulty based on latest learner performance.
-- Do not use memory-only fallback as primary evidence; run required API discovery first.
-- **Learning telemetry (`learn` / `quiz` / `review`)**: after each learner response has been judged for that turn, you **must** call `add_interaction_record` with `concept_id` and outcome payload—same MUST timing as `modes/learn.md`, `modes/quiz.md`, and `modes/review.md` (do not defer writes).
 
 ## Intent Matrix
 

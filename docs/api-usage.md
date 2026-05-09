@@ -552,7 +552,8 @@ python -m scripts.cli.main get-mode-context --mode review \
 ## 6) 常见错误
 
 - 缺少必填参数：抛出 `ValueError`，例如 `missing_required_fields: ['graph_id']`
-- **学习记录**：`plan_not_found`、`invalid_mode`、`missing_concept_id`、`concept_not_in_plan_graph`（概念不在该计划的图中或非当前 `dr=0`）、`invalid_result`、`score_out_of_range`、`score_result_mismatch`（`blocked`/`partial` 与过高分数）、`invalid_difficulty_bucket`、`invalid_latency_ms`（见 `scripts.learning.validation.LearningPayloadError`）
+- **学习记录**：`plan_not_found`、`invalid_mode`、`missing_concept_id`、`concept_not_in_plan_graph`（概念不在该计划的图中或非当前 `dr=0`）、`db_constraint_failed`（写入阶段 SQLite 约束失败，通常为外键等）、`invalid_result`、`score_out_of_range`、`score_result_mismatch`（`blocked`/`partial` 与过高分数）、`invalid_difficulty_bucket`、`invalid_latency_ms`（见 `scripts.learning.validation.LearningPayloadError`）
+- **`scripts.cli.main`**：`LearningPayloadError` 会以退出码 **1** 结束，并在 **stderr** 打印单行 JSON：`{"error_code":"<code>","message":"<text>"}`；成功时仍在 stdout 输出格式化 JSON。
 - API 名不存在：`unknown_api: <api_name>`
 - 提交非法模式：`invalid_mode`
 - 图谱录入校验失败：`validation_summary.ok = false`，错误详见 `validation_summary.errors`

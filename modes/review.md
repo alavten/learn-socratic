@@ -16,8 +16,8 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 4. Execute one concept turn from queue head.
 5. Persist review result after each concept automatically:
    - `add_interaction_record(plan_id, mode="review", record_payload)`
-   - MUST: after each learner answer is judged, write record immediately before queue advance/next question
-6. Advance queue pointer and generate next concept prompt.
+   - MUST: after each learner answer is judged, write record immediately before queue advance, `next_question`, or mode handoff
+6. After successful record write, advance queue pointer and generate next concept prompt.
 
 ## Queue Policy
 
@@ -41,7 +41,7 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
   - learner answer text is the only source for correctness judgment
   - system correction/explanation is feedback only
 - Use short retrieval prompts first; only give full explanation after learner attempt.
-- After each turn: append learning record, update queue state, provide detailed source-grounded explanation for this question, and provide direct next question content.
+- After each turn: append learning record, update queue state after successful record write, provide detailed source-grounded explanation for this question, and provide direct next question content only after the write succeeds.
 - Always return `summary` and `next_step`.
 
 ## Loop Guard
@@ -85,7 +85,7 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 - If due items are empty, suggest a light quiz or new learning task.
 - If persistence fails, retain user-visible feedback and retry commit once.
-- Advance queue and emit the next question only after successful record write.
+- Advance queue, emit the next question, or hand off to `learn` / `quiz` only after successful record write.
 - If auto-next fetch fails, provide a manual `next_step` fallback prompt for the nearest due concept.
 - If queue construction is incomplete, degrade to overdue-first scan instead of latest-item fallback.
 - If `plan_id` is missing, do not run local recommendation logic; route to `shared`.
@@ -101,4 +101,4 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 ## Next Hop
 
-- Continue review queue, or route to learn/quiz through `SKILL.md`.
+- Continue review queue, or route to learn/quiz through `SKILL.md`, only after the current review result record write succeeds.

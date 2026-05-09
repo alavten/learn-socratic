@@ -1,3 +1,4 @@
+import sqlite3
 import uuid
 
 import pytest
@@ -274,6 +275,20 @@ def test_list_learning_plans_progress_includes_concepts_and_records(isolated_db)
     assert prog["concepts_touched"] >= 1
     assert prog["records_by_mode"]["quiz"] >= 1
     assert prog["records_by_mode"]["learn"] == 0
+
+
+def test_add_interaction_record_wraps_sqlite_integrity_error(isolated_db, monkeypatch):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+
+    def boom(*args: object, **kwargs: object) -> dict[str, object]:
+        raise sqlite3.IntegrityError("FOREIGN KEY constraint failed")
+
+    monkeypatch.setattr("scripts.learning.api.append_record_impl", boom)
+    with pytest.raises(LearningPayloadError) as excinfo:
+        add_interaction_record(plan["plan_id"], "learn", {"concept_id": "c1", "result": "ok"})
+    assert excinfo.value.code == "db_constraint_failed"
+    assert "FOREIGN KEY" in excinfo.value.message
 
 
 def test_add_interaction_record_rejects_unknown_concept(isolated_db):

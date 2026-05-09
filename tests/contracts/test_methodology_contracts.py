@@ -59,6 +59,8 @@ def test_skill_requires_interaction_record_and_has_no_global_write_gate():
     assert "do not call write/mutation apis without explicit user confirmation" not in lowered
     assert "add_interaction_record" in content
     assert "learning telemetry" in lowered
+    assert "After each taught concept or judged learner answer" in content
+    assert "until the previous record write succeeds or recovery is surfaced" in content
 
 
 def test_modes_require_per_turn_record_write_and_no_progress_on_write_failure():
@@ -67,11 +69,16 @@ def test_modes_require_per_turn_record_write_and_no_progress_on_write_failure():
     quiz = _read(root / "quiz.md")
     review = _read(root / "review.md")
 
-    assert "MUST: after each concept check answer is received, write record immediately" in learn
-    assert "do not advance to next concept/question" in learn
+    assert "pending taught concept record or judged answer record" in learn
+    assert "MUST: after each concept is taught, write record immediately" in learn
+    assert "MUST: after each concept check answer is received and judged, write record immediately" in learn
+    assert "Multiple records for the same `concept_id` are valid append-only learning events" in learn
+    assert "do not advance to next concept/question/mode handoff" in learn
 
     assert "MUST: after each learner answer is judged, write record immediately" in quiz
-    assert "no next question in same turn" in quiz
+    assert "before emitting next question or handing off modes" in quiz
+    assert "no next question or mode handoff in same turn" in quiz
 
-    assert "MUST: after each learner answer is judged, write record immediately before queue advance/next question" in review
+    assert "MUST: after each learner answer is judged, write record immediately before queue advance" in review
+    assert "or mode handoff" in review
     assert "only after successful record write" in review

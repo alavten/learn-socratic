@@ -14,6 +14,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from scripts.app import create_app
+from scripts.learning.validation import LearningPayloadError
 
 
 def _print_json(payload: Any) -> None:
@@ -116,10 +117,7 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    args = _parser().parse_args()
-    service = create_app()
-
+def _dispatch_cli(service: Any, args: argparse.Namespace) -> None:
     if args.command == "list-apis":
         _print_json(service.list_apis())
         return
@@ -222,6 +220,19 @@ def main() -> None:
         return
 
     raise ValueError(f"unsupported command: {args.command}")
+
+
+def main() -> None:
+    args = _parser().parse_args()
+    service = create_app()
+    try:
+        _dispatch_cli(service, args)
+    except LearningPayloadError as exc:
+        print(
+            json.dumps({"error_code": exc.code, "message": exc.message}, ensure_ascii=False),
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":

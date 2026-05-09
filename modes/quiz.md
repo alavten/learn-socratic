@@ -16,7 +16,7 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 5. Evaluate only learner answers first, then explain through model logic.
 6. Persist result:
    - `add_interaction_record(plan_id, mode="quiz", record_payload)`
-   - MUST: after each learner answer is judged, write record immediately before emitting next question
+   - MUST: after each learner answer is judged, write record immediately before emitting next question or handing off modes
 
 ## Turn Contract
 
@@ -25,6 +25,7 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 - Always include `summary` and `next_step`.
 - Separate learner answer from system explanation in output/state.
 - Never treat system explanation/correction text as learner answer.
+- Do not emit the next question or hand off to `learn` / `review` until the judged answer record write succeeds.
 
 ## AI Execution Directives
 
@@ -71,7 +72,7 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 - If quiz context is missing, request narrower topic or plan selection.
 - If scoring payload is incomplete, persist a partial record with a warning tag.
 - If `plan_id` is missing, do not run local recommendation logic; route to `shared`.
-- If record write fails, return recovery guidance with **no next question in same turn**; do not push next question until retry succeeds or user confirms recovery action.
+- If record write fails, return recovery guidance with **no next question or mode handoff in same turn**; do not push next question until retry succeeds or user confirms recovery action.
 
 ## Minimal Record Payload
 
@@ -85,4 +86,4 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 ## Next Hop
 
-- Route to learn for weak points or review for due items.
+- Route to learn for weak points or review for due items only after the current judged answer record write succeeds.
