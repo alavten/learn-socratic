@@ -23,23 +23,15 @@ def _normalize_args(command_tail: str) -> list[str]:
     return shlex.split(replaced)
 
 
-def test_mode_docs_reference_existing_cli_subcommands():
+def test_skill_router_docs_reference_existing_cli_subcommands():
+    """CLI copy-paste examples live in SKILL.md so modes/*.md stay free of shell snippets."""
     root = _project_root()
-    mode_files = [
-        root / "modes" / "shared.md",
-        root / "modes" / "ingest.md",
-        root / "modes" / "learn.md",
-        root / "modes" / "quiz.md",
-        root / "modes" / "review.md",
-    ]
+    skill_md = (root / "SKILL.md").read_text(encoding="utf-8")
     parser = cli._parser()
 
-    all_commands: list[str] = []
-    for file in mode_files:
-        markdown = file.read_text(encoding="utf-8")
-        all_commands.extend(_extract_cli_commands(markdown))
+    all_commands = _extract_cli_commands(skill_md)
 
-    assert all_commands, "No CLI commands found in mode docs."
+    assert all_commands, "No CLI commands found in SKILL.md CLI Hints."
 
     for cmd_tail in all_commands:
         args = _normalize_args(cmd_tail)

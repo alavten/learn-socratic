@@ -1,6 +1,6 @@
 # learn-socratic
 
-面向「文档 → 知识图谱 → 新学 / 测验 / 复习」的苏格拉底式学习技能。由 Agent 按 `SKILL.md` 路由，并在各模式的契约文件（`modes/*.md`）下执行。
+面向「文档 → 知识图谱 → 新学 / 测验 / 复习」的苏格拉底式学习技能。由 Agent 按 `SKILL.md` 路由，并在各模式的契约文件（`modes/*.md`）下执行。主模式四字：**ingest / learn / quiz / review**（另有 **shared** 用于澄清与恢复）。
 
 ## 适用场景
 
@@ -65,6 +65,53 @@
 - **适合**：还没选定学哪套资料、意图含糊、想 **改一改上次评分或记录**，或上一轮中途卡住需要重来。
 - **典型流程**：列出可选的知识资料库与学习计划，请你 **先选「跟哪份资料 / 哪个计划」**，再决定是导入、讲解、测验还是复习。
 - **章节/主题**：你说要学第几章、哪个知识点时，会先帮你收窄选项，再进入 **`learn`**（或你要的 **`quiz` / `review`**）。
+
+## 发布与 CI（monorepo）
+
+本技能的源码路径为 **`skills/learn-socratic/`**。父 monorepo 根目录下提供一键脚本与 GitHub Actions；请将 **父仓库** 绑定到你的 GitHub remote（本地若仍存在 **`skills/learn-socratic/.git`**，与「仅以父仓为远程」的目标冲突时，迁移时请移除嵌套仓库或改为 submodule）。
+
+- **GitHub Actions（父仓根）**：[**`.github/workflows/learn-socratic-validate.yml`**](../../.github/workflows/learn-socratic-validate.yml)（变更 `skills/learn-socratic/**` 等路径时跑测试 + `gh skill publish --dry-run`）；[**`.github/workflows/learn-socratic-release.yml`**](../../.github/workflows/learn-socratic-release.yml)（手动 **`workflow_dispatch`**，传入 **`version`**，例如 **`v1.2.3`**）。首次发布若 CLI 提示为仓库添加 **`agent-skills`** topic 等，可按 GitHub / [`gh skill publish`](https://cli.github.com/manual/gh_skill_publish) 文档操作。
+- **本地一键**：在 monorepo **父目录根**执行 `./scripts/release-learn-socratic.sh vX.Y.Z`，或使用 `make release-learn-socratic VERSION=vX.Y.Z`。依赖：**GitHub CLI**（需支持 `gh skill publish`）、Python（运行 **`pip install -r skills/learn-socratic/requirements-dev.txt`** 与 pytest）。
+- **环境变量**
+
+  | 变量 | 作用 |
+  |------|------|
+  | `LEARN_SOCRATIC_REPO` | 指向 skill 根目录（含 `SKILL.md`）；不设则用 `$MONOREPO_ROOT/skills/learn-socratic`。 |
+  | `SKIP_TESTS=1` | 跳过 pytest |
+  | `SKIP_DIRTY_CHECK=1` | 允许在有未提交改动时继续 |
+  | `SKIP_PUSH_BRANCH=1` | 不向 `origin` 推送当前分支 |
+  | `SKIP_GH_SKILL=1` | 不执行 `gh skill publish` |
+  | `DRY_RUN_ONLY=1` | 只做校验（含 `--dry-run`），不写 Release |
+  | `ENABLE_SKR=1` | 在发布后若存在 **`skr`** 命令且 **`${SKILL_ROOT}/.skr.yaml`**，则执行 **`skr validate`**（需自备 registry；可参考 **[`.skr.yaml.example`](.skr.yaml.example)**）。 |
+
+- **skills.sh（被动分发）**：[skills.sh](https://skills.sh/) 无单独上传接口；安装可参考：
+  `npx skills add <owner>/<monorepo-repo>/tree/<branch>/skills/learn-socratic`
+  （将 `<owner>/<monorepo-repo>` 换成父仓 slug）。亦可保留 standalone **`learn-socratic`** 仓库时直接使用 **`npx skills add <owner>/learn-socratic`**。
+  [![skills.sh](https://skills.sh/b/alavten/learn-socratic)](https://skills.sh/alavten/learn-socratic)
+
+## SKILL 下载与使用说明
+
+如果你只想拿到技能说明文件（`SKILL.md`）做阅读或二次集成，可用以下方式：
+
+- 下载单文件（raw）：
+
+```bash
+curl -L "https://raw.githubusercontent.com/alavten/learn-socratic/main/SKILL.md" -o SKILL.md
+```
+
+- 克隆完整仓库（推荐，包含 `modes/*.md` 与脚本）：
+
+```bash
+git clone https://github.com/alavten/learn-socratic.git
+```
+
+- 通过 skills CLI 直接安装到当前代理环境：
+
+```bash
+npx skills add alavten/learn-socratic
+```
+
+在 monorepo 场景下，建议仍通过上面的 release/CI 流程维护版本；本节命令更适合快速试用或拉取文档。
 
 ## 本地命令行（可选）
 

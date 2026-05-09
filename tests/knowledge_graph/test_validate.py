@@ -200,6 +200,7 @@ def test_validate_chapter_under_section_emits_warning():
     payload["topics"][0]["topic_type"] = "section"
     payload["topics"][1]["topic_type"] = "chapter"
     payload["topics"][1]["parent_topic_id"] = "t1"
+    payload["topics"][1]["sort_order"] = 1
 
     result = validate_structured_payload(payload)
 

@@ -358,6 +358,15 @@ def get_review_context(plan_id: str, topic_id: str | None = None) -> dict[str, A
         if next_review_at and next_review_at <= now:
             candidate_ids.add(concept_id)
 
+    if not candidate_ids:
+        for row in perf_rows:
+            cid = row.get("concept_id")
+            if not cid:
+                continue
+            if scoped_concept_ids and cid not in scoped_concept_ids:
+                continue
+            candidate_ids.add(cid)
+
     review_score_factors: dict[str, dict[str, float]] = {}
     candidate_items: list[dict[str, Any]] = []
     due_by_concept = {item["concept_id"]: item for item in due_items if item.get("concept_id")}

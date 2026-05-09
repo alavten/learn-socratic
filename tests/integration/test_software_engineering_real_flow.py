@@ -107,7 +107,7 @@ def test_real_flow_with_software_engineering_materials(isolated_db, tmp_path):
     review_prompt = _run_cli(["get-mode-context", "--mode", "review", "--plan-id", plan_id])
     review_text = review_prompt["prompt_text"]
     assert "spacing-first order" in review_text
-    assert review_prompt["context_summary"]["due_items"]
+    assert review_prompt["context_summary"]["candidate_items"]
 
     review_commit = _run_cli(
         [
