@@ -22,6 +22,14 @@
 
 These scenarios are short clarifiers used only to decide the next hop.
 
+### Single file path only
+
+When user provides only one local file path (for example, `/path/to/doc.pdf`) without additional learning intent:
+
+1. Skip shared clarification flow and route directly to `ingest`.
+2. Pass the provided file path as ingest input.
+3. If the path format is ambiguous, ask one concise confirmation question before ingest.
+
 ### Chapter/topic scope
 
 When user asks to learn a specific chapter/section/topic (for example, "学第3章", "讲解事务隔离"):
