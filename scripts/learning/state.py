@@ -24,6 +24,16 @@ def _mastery_level(score: float) -> str:
     return "New"
 
 
+def _normalize_score(score_input: Any) -> float:
+    """Normalize score from either 0~1 or 0~100 into 0~1."""
+    if score_input is None:
+        return 0.6
+    raw = float(score_input)
+    # Backward-compatible: allow callers to send percentage (0~100) or ratio (0~1).
+    normalized = raw / 100.0 if raw > 1.0 else raw
+    return max(0.0, min(1.0, normalized))
+
+
 def update_state_from_record(
     learner_id: str,
     learning_plan_id: str,
@@ -54,7 +64,7 @@ def update_state_from_record(
         )
 
     score_input = record_payload.get("score")
-    normalized_score = max(0.0, min(1.0, (float(score_input) / 100.0) if score_input is not None else 0.6))
+    normalized_score = _normalize_score(score_input)
     result = (record_payload.get("result") or "").lower()
 
     if row:
