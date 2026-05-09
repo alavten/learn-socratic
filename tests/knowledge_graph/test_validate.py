@@ -1,7 +1,13 @@
+import json
+from pathlib import Path
+
 import pytest
 
+from scripts.knowledge_graph.api import ingest_knowledge_graph
 from scripts.knowledge_graph.validate import validate_structured_payload
 from tests.helpers import sample_graph_payload
+
+_FIXTURE_CC_CH2 = Path(__file__).resolve().parent.parent / "fixtures" / "cc_ch2_supplement_concepts.json"
 
 
 def test_validate_success_payload():
@@ -142,6 +148,7 @@ def test_validate_rejects_api_envelope_wrapper():
 def test_validate_warns_when_topics_missing():
     payload = sample_graph_payload()
     payload["topics"] = []
+    payload["topic_concepts"] = []
 
     result = validate_structured_payload(payload)
 
@@ -149,6 +156,59 @@ def test_validate_warns_when_topics_missing():
     assert result["warnings"] == [
         "payload has no topics; graph is queryable but may not be navigable by topic"
     ]
+
+
+def test_validate_topic_concepts_requires_non_empty_topics():
+    payload = sample_graph_payload()
+    payload["topics"] = []
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert any(
+        "topic_concepts is non-empty but payload.topics is empty" in err for err in result["errors"]
+    )
+
+
+def test_validate_topic_concept_requires_topic_id():
+    payload = sample_graph_payload()
+    payload["topic_concepts"][0]["topic_id"] = ""
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "topic_concept[0] missing topic_id" in result["errors"]
+
+
+def test_cc_ch2_supplement_concepts_merge_validates_and_ingests(isolated_db):
+    extra = json.loads(_FIXTURE_CC_CH2.read_text(encoding="utf-8"))
+    payload = sample_graph_payload()
+    payload["concepts"].extend(extra)
+    payload["topic_concepts"].extend(
+        [
+            {
+                "topic_concept_id": "tc-cc2-cached",
+                "topic_id": "t1",
+                "concept_id": "cc-ch2-cached-vs-uncached",
+                "role": "core",
+                "rank": 2,
+            },
+            {
+                "topic_concept_id": "tc-cc2-custom",
+                "topic_id": "t1",
+                "concept_id": "cc-ch2-structured-customization",
+                "role": "core",
+                "rank": 3,
+            },
+        ]
+    )
+
+    validation = validate_structured_payload(payload)
+    assert validation["ok"] is True
+
+    ingest_result = ingest_knowledge_graph("g1", payload)
+    assert ingest_result["validation_summary"]["ok"] is True
+    assert ingest_result["change_summary"]["concepts_upserted"] == 4
 
 
 def test_validate_relation_requires_at_least_one_evidence_link():

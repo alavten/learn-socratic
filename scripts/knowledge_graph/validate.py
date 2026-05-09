@@ -223,13 +223,22 @@ def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
         if not evidence.get("quote_text"):
             errors.append(f"evidence[{idx}] missing quote_text")
 
+    if topic_concepts and not topics:
+        errors.append(
+            "payload.topic_concepts is non-empty but payload.topics is empty; "
+            "provide topics for every linked topic_id"
+        )
+
     for idx, tc in enumerate(topic_concepts):
         if not isinstance(tc, dict):
             errors.append(f"topic_concept[{idx}] must be an object")
             continue
         if not tc.get("topic_concept_id"):
             errors.append(f"topic_concept[{idx}] missing topic_concept_id")
-        if topic_ids and tc.get("topic_id") not in topic_ids:
+        tid = tc.get("topic_id")
+        if not tid:
+            errors.append(f"topic_concept[{idx}] missing topic_id")
+        elif tid not in topic_ids:
             errors.append(f"topic_concept[{idx}] topic_id not found in payload topics")
         if tc.get("concept_id") not in concept_ids:
             errors.append(f"topic_concept[{idx}] concept_id not found in payload concepts")

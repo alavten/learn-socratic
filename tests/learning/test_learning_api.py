@@ -276,6 +276,52 @@ def test_list_learning_plans_progress_includes_concepts_and_records(isolated_db)
     assert prog["records_by_mode"]["learn"] == 0
 
 
+def test_add_interaction_record_rejects_unknown_concept(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    plan = create_learning_plan("g1", topic_id="t1")
+    with pytest.raises(LearningPayloadError) as excinfo:
+        add_interaction_record(
+            plan["plan_id"],
+            "learn",
+            {"concept_id": "no-such-concept", "result": "ok"},
+        )
+    assert excinfo.value.code == "concept_not_in_plan_graph"
+
+
+def test_add_interaction_record_rejects_concept_from_other_graph(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    other = sample_graph_payload()
+    other["concepts"] = [
+        {
+            "concept_id": "g2-only",
+            "canonical_name": "Other graph concept",
+            "definition": "Exists only under graph g2.",
+            "concept_type": "fundamental",
+            "difficulty_level": "easy",
+        }
+    ]
+    other["topics"] = [
+        {"topic_id": "g2t1", "topic_name": "G2 chapter", "topic_type": "chapter", "sort_order": 1},
+    ]
+    other["topic_concepts"] = [
+        {
+            "topic_concept_id": "g2tc1",
+            "topic_id": "g2t1",
+            "concept_id": "g2-only",
+            "role": "core",
+            "rank": 1,
+        },
+    ]
+    other["relations"] = []
+    other["evidences"] = []
+    other["relation_evidences"] = []
+    ingest_knowledge_graph("g2", other)
+    plan = create_learning_plan("g1", topic_id="t1")
+    with pytest.raises(LearningPayloadError) as excinfo:
+        add_interaction_record(plan["plan_id"], "learn", {"concept_id": "g2-only", "result": "ok"})
+    assert excinfo.value.code == "concept_not_in_plan_graph"
+
+
 def test_add_interaction_record_invalid_mode_raises(isolated_db):
     ingest_knowledge_graph("g1", sample_graph_payload())
     plan = create_learning_plan("g1", topic_id="t1")

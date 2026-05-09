@@ -108,3 +108,22 @@ def validate_add_interaction_record(plan_id: str, mode: str, record_payload: Map
     if not exists:
         raise LearningPayloadError("plan_not_found", f"learning plan not found: {plan_id}")
     validate_record_payload_for_interaction(record_payload)
+
+    concept_id = str(record_payload.get("concept_id") or "").strip()
+    linked = query_one(
+        """
+        SELECT c.conceptId AS concept_id
+        FROM Concept c
+        INNER JOIN LearningPlan lp ON lp.graphId = c.graphId
+        WHERE lp.learningPlanId = ?
+          AND c.conceptId = ?
+          AND c.dr = 0
+        """,
+        (plan_id, concept_id),
+    )
+    if not linked:
+        raise LearningPayloadError(
+            "concept_not_in_plan_graph",
+            f"concept_id is missing from this plan's knowledge graph (or not current dr=0): "
+            f"{concept_id!r}",
+        )

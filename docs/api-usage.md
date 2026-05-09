@@ -254,6 +254,7 @@ CLI `--payload-file` 约定：
   - 错误示例：`concept_id / evidence_text`
 - `relation_evidences` 必填：`relation_evidence_id / concept_relation_id / evidence_id`
 - `topic_concepts` 必填：`topic_concept_id / topic_id / concept_id`
+  - **一致性**：`topic_concepts` 非空时，`topics` 也必须非空；每条 `topic_id` 必须出现在 `topics` 中（否则会在校验阶段失败，而不会拖到 SQLite 外键）。
 - `concepts` 必填：`concept_id / canonical_name / definition`
   - 错误示例：`name` 代替 `canonical_name`
 - `topics` 必填：`topic_id / topic_name / topic_type`
@@ -272,6 +273,14 @@ CLI 示例：
 python -m scripts.cli.main ingest-knowledge-graph --graph-id g1 --payload-file ./payload.json \
   --sync-mode upsert_and_prune --prune-topic-ids t1,t2 --force-delete
 ```
+
+#### 历史修复示例：补齐曾缺失的 Concept（如 `cc-ch2-*`）
+
+若 `topic_concepts` 引用了尚未写入 `Concept` 表的 `concept_id`，入库会因 `TopicConcept → Concept` 外键失败且整笔事务回滚。处理方式：
+
+1. 在权威 payload 的 `concepts` 数组中增加对应节点（或使用仓库内示例片段 [`tests/fixtures/cc_ch2_supplement_concepts.json`](../tests/fixtures/cc_ch2_supplement_concepts.json) 合并进你的 JSON）。
+2. 重新执行 `ingest_knowledge_graph`（与学习计划所用 `graph_id` 一致）。
+3. 若还需补学习遥测，在图谱已对齐后对每条概念照常使用通用 CLI `add-interaction-record`（见本文第 5 节及文中示例），不要使用单独的专用修补子命令。
 
 ### `remove_knowledge_graph_entities(graph_id, remove_payload, force_delete=False)`
 
@@ -484,7 +493,9 @@ python -m scripts.cli.main get-mode-context --mode review \
 
 `mode` 取值：`learn` / `quiz` / `review`
 
-**入参校验（领域层）**：写入前会校验 `plan_id` 存在、`mode` 合法、`concept_id` 必填、`result`（若提供）在白名单、`score` 在合法区间且不与 `partial`/`blocked` 矛盾、`difficulty_bucket`/`latency_ms` 合法。失败抛出 `LearningPayloadError`（`code` + `message`）；编排层经 JSON Schema 校验的请求也应与之对齐。
+**入参校验（领域层）**：写入前会校验 `plan_id` 存在、`mode` 合法、`concept_id` 必填且 **`concept_id` 必须已存在于该计划对应知识图谱的 `Concept` 表中（当前版本 `dr = 0`）**，`result`（若提供）在白名单、`score` 在合法区间且不与 `partial`/`blocked` 矛盾、`difficulty_bucket`/`latency_ms` 合法。失败抛出 `LearningPayloadError`（`code` + `message`）；编排层经 JSON Schema 校验的请求也应与之对齐。
+
+此前若因缺失概念导致 SQLite 外键失败，事务会整体回滚（通常不会在库里留下半条 `LearningRecord`）。图谱补齐后，新的交互可正常写入；**更早的交互明细**仅在仍保留会话日志等离线副本时可手工补录同一 API（注意时间与幂等）。
 
 **分数**：`score` 可为 **0–100（百分制）** 或 **0–1（比例）**。省略时按 `result` 推断默认（例如 `ok`/`correct`/`pass` 偏高，`partial`/`blocked` 偏低）。
 
@@ -541,7 +552,7 @@ python -m scripts.cli.main get-mode-context --mode review \
 ## 6) 常见错误
 
 - 缺少必填参数：抛出 `ValueError`，例如 `missing_required_fields: ['graph_id']`
-- **学习记录**：`plan_not_found`、`invalid_mode`、`missing_concept_id`、`invalid_result`、`score_out_of_range`、`score_result_mismatch`（`blocked`/`partial` 与过高分数）、`invalid_difficulty_bucket`、`invalid_latency_ms`（见 `scripts.learning.validation.LearningPayloadError`）
+- **学习记录**：`plan_not_found`、`invalid_mode`、`missing_concept_id`、`concept_not_in_plan_graph`（概念不在该计划的图中或非当前 `dr=0`）、`invalid_result`、`score_out_of_range`、`score_result_mismatch`（`blocked`/`partial` 与过高分数）、`invalid_difficulty_bucket`、`invalid_latency_ms`（见 `scripts.learning.validation.LearningPayloadError`）
 - API 名不存在：`unknown_api: <api_name>`
 - 提交非法模式：`invalid_mode`
 - 图谱录入校验失败：`validation_summary.ok = false`，错误详见 `validation_summary.errors`

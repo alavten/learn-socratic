@@ -1,0 +1,16 @@
+[
+  {
+    "concept_id": "cc-ch2-cached-vs-uncached",
+    "canonical_name": "缓存与未缓存（Cached vs Uncached）",
+    "definition": "区分模型输出是否来自预计算或持久化缓存路径与实时推理路径；对应延迟、成本、一致性（staleness）与可观测性的差异。",
+    "concept_type": "concept",
+    "difficulty_level": "medium"
+  },
+  {
+    "concept_id": "cc-ch2-structured-customization",
+    "canonical_name": "结构化定制（Structured Customization）",
+    "definition": "通过类型化字段、约束模式或可解析结构（而非无模式自由文本）在有限空间内定制模型输出或工具参数，以提高可控性与可测试性。",
+    "concept_type": "concept",
+    "difficulty_level": "medium"
+  }
+]
