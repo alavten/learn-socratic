@@ -18,12 +18,12 @@
 
 用你的说法对照目标模式（详细规则见对应 `modes/*.md`）：
 
-| 你想做的事 | 模式 | 契约文件 |
-| --- | --- | --- |
-| 导入材料、建图、更新图谱 | `ingest` | `modes/ingest.md` |
-| 讲解、带我理解 | `learn` | `modes/learn.md` |
-| 测验、考我、出题 | `quiz` | `modes/quiz.md` |
-| 复习、背诵、到期巩固 | `review` | `modes/review.md` |
+| 你想做的事                                          | 模式     | 契约文件          |
+| --------------------------------------------------- | -------- | ----------------- |
+| 导入材料、建图、更新图谱                            | `ingest` | `modes/ingest.md` |
+| 讲解、带我理解                                      | `learn`  | `modes/learn.md`  |
+| 测验、考我、出题                                    | `quiz`   | `modes/quiz.md`   |
+| 复习、背诵、到期巩固                                | `review` | `modes/review.md` |
 | 意图模糊、说不清跟哪份图谱/资料学、或要从失败里恢复 | `shared` | `modes/shared.md` |
 
 路由习惯：
@@ -75,15 +75,15 @@
 - **skills.sh 校验**：脚本支持 **`--verify-skills-sh`**（对 `origin` 解析出的 **`owner/repo`** 运行 **`npx skills add owner/repo --list`**，并检查 **`SKILL.md`** 里的 **`name:`**）。可选 **`--skills-sh-search-wait N`** 轮询 **`https://skills.sh/api/search`**（站点收录与排序依赖 CLI 安装匿名统计，可能长时间为空；可用 **`--require-skills-sh-search`** 在必填收录场景下失败退出）。仅做校验时可 **`--target none`**（仍需传入占位 tag，例如 **`v0.0.0`**）。
 - **环境变量**
 
-  | 变量 | 作用 |
-  |------|------|
-  | `LEARN_SOCRATIC_REPO` | 指向 skill 根目录（含 `SKILL.md`）；不设则用 `$MONOREPO_ROOT/skills/learn-socratic`。 |
-  | `SKILLS_SH_GITHUB_REPO` | `owner/repo`，覆盖从 **`git remote`** 推断的仓库 slug（用于 **`--verify-skills-sh`**）。 |
-  | `SKIP_TESTS=1` | 跳过 pytest |
-  | `SKIP_DIRTY_CHECK=1` | 允许在有未提交改动时继续 |
-  | `SKIP_PUSH_BRANCH=1` | 不向 `origin` 推送当前分支 |
-  | `DRY_RUN_ONLY=1` | 只做校验（含 `--dry-run`），不写 Release |
-  | `ENABLE_SKR=1` | 在发布后若存在 **`skr`** 命令且 **`${SKILL_ROOT}/.skr.yaml`**，则执行 **`skr validate`**（需自备 registry；可参考 **[`.skr.yaml.example`](.skr.yaml.example)**）。 |
+  | 变量                    | 作用                                                                                                                                                               |
+  | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `LEARN_SOCRATIC_REPO`   | 指向 skill 根目录（含 `SKILL.md`）；不设则用 `$MONOREPO_ROOT/skills/learn-socratic`。                                                                              |
+  | `SKILLS_SH_GITHUB_REPO` | `owner/repo`，覆盖从 **`git remote`** 推断的仓库 slug（用于 **`--verify-skills-sh`**）。                                                                           |
+  | `SKIP_TESTS=1`          | 跳过 pytest                                                                                                                                                        |
+  | `SKIP_DIRTY_CHECK=1`    | 允许在有未提交改动时继续                                                                                                                                           |
+  | `SKIP_PUSH_BRANCH=1`    | 不向 `origin` 推送当前分支                                                                                                                                         |
+  | `DRY_RUN_ONLY=1`        | 只做校验（含 `--dry-run`），不写 Release                                                                                                                           |
+  | `ENABLE_SKR=1`          | 在发布后若存在 **`skr`** 命令且 **`${SKILL_ROOT}/.skr.yaml`**，则执行 **`skr validate`**（需自备 registry；可参考 **[`.skr.yaml.example`](.skr.yaml.example)**）。 |
 
 - **skills.sh（被动分发）**：[skills.sh](https://skills.sh/) 没有单独的「登记搜索」接口；官网检索与排行榜依赖 **`skills` CLI** 的安装匿名统计（见 [文档](https://skills.sh/docs)）。能保证的是：**`npx skills add <父仓>`** 能列出本技能（CI 已自动检查）；能否在首页搜到取决于索引与用量，可用脚本可选轮询搜索 API 观测延迟。
   安装示例：
@@ -95,22 +95,16 @@
 
 如果你只想拿到技能说明文件（`SKILL.md`）做阅读或二次集成，可用以下方式：
 
-- 下载单文件（raw）：
-
-```bash
-curl -L "https://raw.githubusercontent.com/alavten/learn-socratic/main/SKILL.md" -o SKILL.md
-```
-
-- 克隆完整仓库（推荐，包含 `modes/*.md` 与脚本）：
-
-```bash
-git clone https://github.com/alavten/learn-socratic.git
-```
-
 - 通过 skills CLI 直接安装到当前代理环境：
 
 ```bash
 npx skills add alavten/learn-socratic
+```
+
+- 克隆完整仓库
+
+```bash
+git clone https://github.com/alavten/learn-socratic.git
 ```
 
 在 monorepo 场景下，建议仍通过上面的 release/CI 流程维护版本；本节命令更适合快速试用或拉取文档。
