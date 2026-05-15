@@ -14,6 +14,8 @@ def list_graphs(limit: int = 20, offset: str | None = None) -> dict[str, Any]:
         SELECT
             g.graphId AS graph_id,
             g.graphName AS name,
+            g.graphType AS graph_type,
+            g.parentGraphId AS parent_graph_id,
             g.revision AS revision,
             g.status AS status,
             (SELECT COUNT(*) FROM Topic t WHERE t.graphId = g.graphId) AS topic_count,
@@ -59,6 +61,7 @@ def get_graph_core(graph_id: str) -> dict[str, Any] | None:
             graphId AS graph_id,
             graphName AS name,
             graphType AS graph_type,
+            parentGraphId AS parent_graph_id,
             purpose,
             owner,
             schemaVersion AS schema_version,

@@ -42,7 +42,7 @@ def _reindex_topic_orders(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    validation = validate_structured_payload(payload)
+    validation = validate_structured_payload(payload, ingest_graph_id=graph_id)
     if not validation["ok"]:
         return {
             "graph_id": graph_id,

@@ -267,3 +267,62 @@ def test_validate_chapter_under_section_emits_warning():
     assert result["ok"] is True
     joined = " ".join(result["warnings"])
     assert "chapters should not be nested under sections" in joined
+
+
+def test_validate_parent_graph_id_rejects_self_reference():
+    payload = sample_graph_payload()
+    payload["graph"]["parent_graph_id"] = "same-id"
+
+    result = validate_structured_payload(payload, ingest_graph_id="same-id")
+
+    assert result["ok"] is False
+    assert "self-reference" in " ".join(result["errors"])
+
+
+def test_validate_parent_graph_id_rejects_empty_string():
+    payload = sample_graph_payload()
+    payload["graph"]["parent_graph_id"] = "   "
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "parent_graph_id" in " ".join(result["errors"])
+
+
+def test_validate_parent_graph_id_rejects_non_string():
+    payload = sample_graph_payload()
+    payload["graph"]["parent_graph_id"] = 123
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "parent_graph_id must be a string" in " ".join(result["errors"])
+
+
+def test_validate_b2_ch_prefix_warns_when_parent_missing():
+    payload = sample_graph_payload()
+
+    result = validate_structured_payload(payload, ingest_graph_id="b2-ch01-demo")
+
+    assert result["ok"] is True
+    assert any("b2-ch" in w and "parent_graph_id" in w for w in result["warnings"])
+
+
+def test_validate_require_parent_errors_when_missing():
+    payload = sample_graph_payload()
+    payload["graph"]["ingest_policy"] = {"require_parent": True}
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "require_parent" in " ".join(result["errors"])
+
+
+def test_validate_ingest_policy_must_be_object():
+    payload = sample_graph_payload()
+    payload["graph"]["ingest_policy"] = "yes"
+
+    result = validate_structured_payload(payload)
+
+    assert result["ok"] is False
+    assert "ingest_policy must be an object" in " ".join(result["errors"])

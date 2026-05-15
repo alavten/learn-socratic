@@ -164,6 +164,18 @@ API_SPECS: dict[str, dict[str, Any]] = {
                                 "graph_name": {"type": "string"},
                                 "schema_version": {"type": "string"},
                                 "release_tag": {"type": "string"},
+                                "parent_graph_id": {
+                                    "type": "string",
+                                    "description": "Optional FK to parent Graph.graphId for book/course hierarchy",
+                                },
+                                "ingest_policy": {
+                                    "type": "object",
+                                    "description": "Optional ingest hints; require_parent forces parent_graph_id",
+                                    "properties": {
+                                        "require_parent": {"type": "boolean"},
+                                    },
+                                    "additionalProperties": False,
+                                },
                             },
                             "additionalProperties": False,
                             "examples": [
@@ -172,7 +184,14 @@ API_SPECS: dict[str, dict[str, Any]] = {
                                     "graph_name": "Software Engineering Exam Knowledge",
                                     "schema_version": "1.0.0",
                                     "release_tag": "se-r1",
-                                }
+                                },
+                                {
+                                    "graph_type": "domain",
+                                    "graph_name": "Claude Harness VS Codex Harness — Ch01 为什么做比较",
+                                    "schema_version": "1.0.0",
+                                    "release_tag": "r1",
+                                    "parent_graph_id": "claude-harness-vs-codex-harness",
+                                },
                             ],
                         },
                         "concepts": {
@@ -653,7 +672,7 @@ def _build_discovery_tables(
     knowledge_graphs: list[dict[str, Any]],
     pending_learning_plans: list[dict[str, Any]],
 ) -> dict[str, str]:
-    graph_headers = ["序号", "graph_id", "图谱名称", "revision", "主题数", "概念数", "主题内容", "状态"]
+    graph_headers = ["序号", "graph_id", "图谱名称", "revision", "主题数", "概念数", "父图", "类型", "主题内容", "状态"]
     graph_rows = [
         [
             idx + 1,
@@ -662,6 +681,8 @@ def _build_discovery_tables(
             item.get("revision", 0),
             item.get("topic_count", 0),
             item.get("concept_count", 0),
+            item.get("parent_graph_id") or "",
+            item.get("graph_type", ""),
             item.get("topic_content") or "（暂无主题摘要）",
             item.get("status", ""),
         ]

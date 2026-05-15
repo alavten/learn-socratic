@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use real prompt sessions against `SKILL.md` + `modes/*.md` to validate the full loop:
+Use real prompt sessions against `SKILL.md` + `references/*.md` to validate the full loop:
 `ingest -> learn -> quiz -> review` (including `shared` reroute).
 
 ## Baseline
@@ -20,7 +20,7 @@ Use real prompt sessions against `SKILL.md` + `modes/*.md` to validate the full 
 
 ## Cadence
 
-- Run after every change to `SKILL.md` or `modes/*.md`.
+- Run after every change to `SKILL.md` or `references/*.md`.
 - Weekly full regression.
 - Mandatory full run before release.
 

@@ -2,6 +2,8 @@
 
 本文档面向调用方，说明 `orchestration_app_service` 的可用 API、典型入参和响应示例。
 
+图谱层级字段 `parent_graph_id`（payload 内 `graph.parent_graph_id`，对应 SQLite `Graph.parentGraphId`）见 [数据模型设计](data-model-design.md) 中 Graph 与主图/子图说明。
+
 ## 双视图入口
 
 ### User Journey View（按目标选择）
@@ -27,7 +29,7 @@
 
 ## 文档分工说明
 
-- `modes/*.md` 负责交互契约（如何问、如何反馈、输出字段要求）。
+- `references/*.md` 负责交互契约（如何问、如何反馈、输出字段要求）。
 - `docs/architecture-design.md` 与本文档负责编排执行链（API 调用顺序、上下文组装、状态推进）。
 - 当两者出现流程细节冲突时，以编排文档（`architecture-design.md` + 本文档）为准；模式文档不重复维护 API 调用顺序。
 
@@ -118,6 +120,8 @@ python -m scripts.cli.main list-apis
     {
       "graph_id": "g1",
       "name": "Python Basics",
+      "graph_type": "domain",
+      "parent_graph_id": null,
       "revision": 1,
       "status": "active",
       "topic_count": 2,
@@ -151,6 +155,7 @@ python -m scripts.cli.main list-apis
     "graph_id": "g1",
     "name": "Python Basics",
     "graph_type": "domain",
+    "parent_graph_id": null,
     "schema_version": "1.0.0",
     "release_tag": "r1",
     "revision": 1,
@@ -169,6 +174,8 @@ python -m scripts.cli.main list-apis
 CLI `--payload-file` 约定：
 - 仅传 `structured_payload` 对象本体（`graph/concepts/relations/...`）。
 - 不要传 API 包装体 `{ "graph_id": "...", "structured_payload": {...} }`，`graph_id` 通过 CLI 参数单独提供。
+- **可选** `graph.parent_graph_id`：父图的 `graph_id`；拆章时必须先存在父图行，且不得与当前入参 `graph_id` 相同（自引用会被校验拒绝）。
+- **可选** `graph.ingest_policy.require_parent`：为 `true` 时缺少非空 `parent_graph_id` 将校验失败（适合批处理/CI）。
 
 **请求示例**
 
@@ -180,7 +187,8 @@ CLI `--payload-file` 约定：
       "graph_type": "domain",
       "graph_name": "Python Basics",
       "schema_version": "1.0.0",
-      "release_tag": "r1"
+      "release_tag": "r1",
+      "parent_graph_id": "claude-harness-vs-codex-harness"
     },
     "topics": [
       {

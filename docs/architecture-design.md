@@ -10,7 +10,7 @@
 
 | 模块 / 组件             | 职责                                                                                               | 典型载体 / 产物                                                                                       |
 | ----------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **路由与工作流组件**    | 基于用户意图完成模式路由（ingest/learn/quiz/review）与工作流分发；仅定义流程，不直接读写业务存储。 | `SKILL.md`、`modes/*.md`                                                                              |
+| **路由与工作流组件**    | 基于用户意图完成模式路由（ingest/learn/quiz/review）与工作流分发；仅定义流程，不直接读写业务存储。 | `SKILL.md`、`references/*.md`                                                                              |
 | **应用编排与 API 组件** | 对外暴露统一 API，编排业务模块调用，做入参校验与提示词文本封装。                                   | `orchestration_app_service`、`list_apis/get_api_spec`                                                 |
 | **知识图谱模块**        | 负责图谱入库、概念/关系/证据治理与通用查询，提供学习域所需图谱材料。                               | `Graph`、`Topic`、`Concept`、`TopicConcept`、`ConceptRelation`、`Evidence`、`RelationEvidence`        |
 | **学习模块**            | 负责学习计划、学习记录、状态快照与任务调度，并聚合学习/测验/复习上下文。                           | `Learner`、`LearningPlan`、`LearningSession`、`LearningRecord`、`LearnerConceptState`、`LearningTask` |
@@ -305,7 +305,7 @@ sequenceDiagram
 | 层级                            | 典型形态                                        | 职责                                                                           |
 | ------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------ |
 | **L1 技能入口**                 | 根级 `SKILL.md`                                 | 元数据、模式路由、渐进式披露顺序。                                             |
-| **L2 模式契约**                 | `modes/*.md`                                    | 新学 / 测验 / 复习的步骤与人机措辞；声明调用的运行时能力（不写死存储格式）。   |
+| **L2 模式契约**                 | `references/*.md`                                    | 新学 / 测验 / 复习的步骤与人机措辞；声明调用的运行时能力（不写死存储格式）。   |
 | **L3 编排与接口层**             | `scripts/orchestration/`                        | 承载编排应用服务与接口自描述能力（`list_apis/get_api_spec`），并协调业务模块。 |
 | **L4 业务模块（module-first）** | `scripts/knowledge_graph/`、`scripts/learning/` | 按模块组织能力：图谱治理、学习回合数据、学习记录与状态更新。                   |
 | **L5 基础技术支撑**             | `scripts/foundation/`                           | DB 适配与日志等非业务共性能力（不含模型推理）。                                |
@@ -319,8 +319,9 @@ sequenceDiagram
 ```text
 doc-socratic-learning-optimized/
 ├─ SKILL.md                                   # L1 技能入口
-├─ modes/                                     # L2 模式契约
+├─ references/                                     # L2 模式契约
 │  ├─ shared.md
+│  ├─ ingest.md
 │  ├─ learn.md
 │  ├─ quiz.md
 │  └─ review.md
@@ -363,13 +364,13 @@ doc-socratic-learning-optimized/
   - **路由职责**：基于用户意图、会话状态与最近任务上下文，完成**模式选择与模式切换路由**（learn/quiz/review 之间切换也是 L1 路由的一部分）。
   - **路由优先原则**：优先直接路由到 `learn.md` / `quiz.md` / `review.md`；仅在无法判定时才进入 `shared.md`。
   - **路由规则建议（最小）**：
-    - 命中“学习/讲解/理解”意图 -> `modes/learn.md`
-    - 命中“测试/检查掌握/出题”意图 -> `modes/quiz.md`
-    - 命中“复习/到期/回顾”意图 -> `modes/review.md`
-    - 无明确意图或冲突意图 -> `modes/shared.md` 先做一次意图澄清，再回到 L1 重新分流
+    - 命中“学习/讲解/理解”意图 -> `references/learn.md`
+    - 命中“测试/检查掌握/出题”意图 -> `references/quiz.md`
+    - 命中“复习/到期/回顾”意图 -> `references/review.md`
+    - 无明确意图或冲突意图 -> `references/shared.md` 先做一次意图澄清，再回到 L1 重新分流
     - 会话内模式切换（如 learn -> quiz -> review）-> 先走 L1 路由判定，再进入目标模式文档
   - **约束**：`SKILL.md` 只承载“描述与路由”，不承载具体问答脚本细节（细节下沉到 L2）。
-- **L2 (`modes/*.md`)：模式工作流定义**
+- **L2 (`references/*.md`)：模式工作流定义**
   - **`shared.md`（放这些）**：
     - 跨模式公共兜底：意图澄清、上下文补齐、异常处理、重试与降级规则
     - 跨模式公共后置：回合提交后的下一步衔接（继续学习/测验/复习）

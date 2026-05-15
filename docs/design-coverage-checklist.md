@@ -3,7 +3,7 @@
 ## Architecture Design Coverage
 
 - [x] L1 entry routing implemented in `SKILL.md`.
-- [x] L2 mode contracts implemented in `modes/shared.md`, `modes/ingest.md`, `modes/learn.md`, `modes/quiz.md`, `modes/review.md`.
+- [x] L2 mode contracts implemented in `references/shared.md`, `references/ingest.md`, `references/learn.md`, `references/quiz.md`, `references/review.md`.
 - [x] L3 orchestration service implemented in `scripts/orchestration/orchestration_app_service.py`.
 - [x] Prompt text packaging implemented in `scripts/orchestration/prompt_templates.py`.
 - [x] L4 knowledge graph module implemented in `scripts/knowledge_graph/`.

@@ -52,7 +52,11 @@ def _validate_topic_sort_orders(topics: list[dict[str, Any]], errors: list[str])
             )
 
 
-def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def validate_structured_payload(
+    payload: dict[str, Any],
+    *,
+    ingest_graph_id: str | None = None,
+) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -99,6 +103,39 @@ def validate_structured_payload(payload: dict[str, Any]) -> dict[str, Any]:
             allowed = ", ".join(sorted(ALLOWED_GRAPH_TYPES))
             errors.append(
                 f"payload.graph graph_type '{graph_type}' is invalid, allowed: [{allowed}]"
+            )
+
+        parent_raw = graph.get("parent_graph_id")
+        parent_trim: str | None = None
+        if parent_raw is not None:
+            if not isinstance(parent_raw, str):
+                errors.append("payload.graph.parent_graph_id must be a string when provided")
+            else:
+                parent_trim = parent_raw.strip()
+                if not parent_trim:
+                    errors.append("payload.graph.parent_graph_id must not be empty or whitespace-only")
+                elif ingest_graph_id is not None and parent_trim == ingest_graph_id:
+                    errors.append(
+                        "payload.graph.parent_graph_id must not equal the ingest graph_id (self-reference)"
+                    )
+
+        ingest_policy = graph.get("ingest_policy")
+        if ingest_policy is not None:
+            if not isinstance(ingest_policy, dict):
+                errors.append("payload.graph.ingest_policy must be an object when provided")
+            elif ingest_policy.get("require_parent") and not parent_trim:
+                errors.append(
+                    "payload.graph.ingest_policy.require_parent is true but parent_graph_id is missing or empty"
+                )
+
+        if (
+            ingest_graph_id is not None
+            and str(ingest_graph_id).startswith("b2-ch")
+            and not parent_trim
+        ):
+            warnings.append(
+                "graph_id starts with 'b2-ch' but parent_graph_id is missing; "
+                "series chapter graphs should set parent_graph_id to the book-level parent graph"
             )
 
     concepts = payload.get("concepts", [])

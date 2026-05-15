@@ -19,7 +19,7 @@ def test_skill_contains_thin_methodology_sections():
 
 
 def test_modes_define_experience_contract_sections():
-    root = _root() / "modes"
+    root = _root() / "references"
     mode_files = ["ingest.md", "learn.md", "quiz.md", "review.md"]
     for name in mode_files:
         content = _read(root / name)
@@ -31,7 +31,7 @@ def test_modes_define_experience_contract_sections():
 
 
 def test_modes_output_contract_has_summary_and_next_step():
-    root = _root() / "modes"
+    root = _root() / "references"
     mode_files = ["shared.md", "ingest.md", "learn.md", "quiz.md", "review.md"]
     for name in mode_files:
         content = _read(root / name)
@@ -40,7 +40,7 @@ def test_modes_output_contract_has_summary_and_next_step():
 
 
 def test_shared_and_learn_require_discovery_snapshot_and_dual_tables():
-    root = _root() / "modes"
+    root = _root() / "references"
     shared = _read(root / "shared.md")
     learn = _read(root / "learn.md")
 
@@ -64,7 +64,7 @@ def test_skill_requires_interaction_record_and_has_no_global_write_gate():
 
 
 def test_modes_require_per_turn_record_write_and_no_progress_on_write_failure():
-    root = _root() / "modes"
+    root = _root() / "references"
     learn = _read(root / "learn.md")
     quiz = _read(root / "quiz.md")
     review = _read(root / "review.md")

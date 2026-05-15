@@ -24,7 +24,7 @@ def _normalize_args(command_tail: str) -> list[str]:
 
 
 def test_skill_router_docs_reference_existing_cli_subcommands():
-    """CLI copy-paste examples live in SKILL.md so modes/*.md stay free of shell snippets."""
+    """CLI copy-paste examples live in SKILL.md so references/*.md stay free of shell snippets."""
     root = _project_root()
     skill_md = (root / "SKILL.md").read_text(encoding="utf-8")
     parser = cli._parser()

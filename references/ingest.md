@@ -34,6 +34,19 @@ Required context: `graph_id`, `payload_file` (`structured_payload` JSON object o
 - If payload succeeds, summarize version/change delta and recommend the next mode.
 - Do not invent missing payload fields; request explicit correction inputs.
 
+## Series and chapter graphs (书系拆章)
+
+**《Claude Harness VS Codex Harness》** 在库内已迁移为与 `se-full-20260422` **同构**：单一 `graph_id`（`claude-harness-vs-codex-harness`），章节与节全部挂在 **`topics`**（`chapter` / `section` + `parent_topic_id`），**不要**再为该书包新建 `b2-ch*` 平行子图。
+
+其它书系若仍采用「一书多 `graph_id` + 父图」模式，可沿用下列约定（与 `parent_graph_id` 校验一致）：
+
+1. **先写入父图**（专用 `graph_id` + 最小合法 payload），再逐章 ingest。
+2. 每章子图的 `graph` 中设置 **`parent_graph_id`** 指向父图，避免平行根图。
+3. **命名**：父图 `graph.graph_name` 用书系稳定标题；各章 `graph_name` 使用同一前缀 + 章后缀（例如 em dash `—`）。
+4. 成功入图后确认父链与命名符合约定。
+
+可选：在 payload 中设置 `graph.ingest_policy.require_parent: true`，批处理/CI 下缺少 `parent_graph_id` 会直接校验失败。
+
 ## Escalation Rule
 
 - If validation passes: suggest next hop (`learn` or optional `create_learning_plan`).

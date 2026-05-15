@@ -22,8 +22,9 @@ Applies to every session regardless of mode.
 - **Session end**: return concise `summary` and one actionable `next_step`.
 - One primary mode per user turn; use `shared` only for clarification/recovery.
 - Follow exactly one active mode contract (`shared`/`ingest`/`learn`/`quiz`/`review`) per turn; never mix per-mode rules.
-- Keep this file thin: mode-specific fields/steps live only in mode contract files.
+- Keep this file thin: mode-specific fields/steps live only in reference contract files (`references/*.md`).
 - Do not use memory-only fallback as primary evidence; run required API discovery first.
+- For multi-graph courses or books, do not leave chapter graphs as parallel roots: create a parent `graph_id`, set each chapter’s `graph.parent_graph_id`, and keep a shared `graph.graph_name` prefix (see `references/ingest.md` “书系拆章”) unless the user explicitly wants isolated graphs.
 - **Learning telemetry is mandatory** for `learn` / `quiz` / `review`.
 - After each taught concept or judged learner answer, immediately call `add_interaction_record` with `concept_id` and outcome payload.
 - Do not introduce the next concept, emit the next question, advance a review queue, or hand off modes until the previous record write succeeds or recovery is surfaced.
@@ -32,15 +33,15 @@ Applies to every session regardless of mode.
 
 ## Intent Matrix
 
-Map natural language intent to target mode and mode contract file:
+Map natural language intent to target mode and reference contract file:
 
-| User intent hint                            | Target mode | Contract file     |
+| User intent hint                            | Target mode | Contract file          |
 | ------------------------------------------- | ----------- | ----------------- |
-| import materials, build graph, update graph | `ingest`    | `modes/ingest.md` |
-| explain, teach me, learn                    | `learn`     | `modes/learn.md`  |
-| test me, quiz, ask questions                | `quiz`      | `modes/quiz.md`   |
-| review, recap, due items                    | `review`    | `modes/review.md` |
-| ambiguous or conflicting intent             | `shared`    | `modes/shared.md` |
+| import materials, build graph, update graph | `ingest`    | `references/ingest.md` |
+| explain, teach me, learn                    | `learn`     | `references/learn.md`  |
+| test me, quiz, ask questions                | `quiz`      | `references/quiz.md`   |
+| review, recap, due items                    | `review`    | `references/review.md` |
+| ambiguous or conflicting intent             | `shared`    | `references/shared.md` |
 
 Routing flow rules:
 
