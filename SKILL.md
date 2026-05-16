@@ -52,11 +52,24 @@ Routing flow rules:
 
 ## CLI Hints
 
-- Example:
-  - `python -m scripts.cli.main get-mode-context --mode learn --plan-id PLAN_ID --topic-id t1`
-- `--mode=ingest|learn|quiz|review`
-- `--file=`
-- `--graph-id=`
-- `--payload-file=`
-- `--target=`
-- `--timebox=`
+Run commands from the skill repo root (the directory that contains `scripts/`), e.g. `cd …/learn-socratic && python -m scripts.cli.main …`.
+
+**Discovery (authoritative)**
+
+1. **`list-apis`** — JSON list of orchestration API `name` values (snake_case), same as `OrchestrationAppService.list_apis()`.
+2. **`get-api-spec --api-name <snake_case>`** — input JSON Schema for that API (e.g. `get_knowledge_graph`).
+3. **`list-knowledge-graphs`** — lists stored graph metadata; use this to obtain valid **`graph_id`** values. It does **not** enumerate shell subcommands (do not confuse with `list-apis`).
+
+**Allowed CLI subcommands only** (must match `scripts/cli/main.py`; do not invent names such as `get-concepts`):
+
+`list-apis`, `get-api-spec`, `list-knowledge-graphs`, `get-knowledge-graph`, `ingest-knowledge-graph`, `remove-knowledge-graph-entities`, `list-learning-plans`, `create-learning-plan`, `extend-learning-plan-topics`, `get-mode-context`, `add-interaction-record`
+
+**Notes**
+
+- There is **no** `get-concepts` CLI. To fetch concept briefs from the terminal by graph (and optionally topic), use **`get-knowledge-graph`** with `--graph-id` and optional `--topic-id`, `--concept-limit`, `--offset`.
+- `scripts.knowledge_graph.api.get_concepts` is a **Python module** helper, not a method on `OrchestrationAppService` and not exposed as a subcommand.
+- Some orchestration APIs (e.g. `get_discovery_context`) have **no** dedicated CLI; call them via `create_app()` in Python (or `call_api` if you use it).
+
+Example:
+
+`python -m scripts.cli.main get-mode-context --mode learn --plan-id PLAN_ID --topic-id t1`

@@ -45,6 +45,14 @@ service = create_app()
 python -m scripts.cli.main list-apis
 ```
 
+### CLI 与子命令
+
+- **编排 API 名称**（snake_case）以 `list_apis()` / CLI `list-apis` 返回的 `name` 为准，与 [`orchestration_app_service` 的 `API_SPECS`](architecture-design.md) 一致。
+- **入参 JSON Schema**：CLI `get-api-spec --api-name <snake_case>`（等价于 `get_api_spec(api_name)`）。
+- **`graph_id` 取值**：CLI `list-knowledge-graphs` 列出库中图谱元数据（`items` 等），用于填写各命令的 `--graph-id`。**不要**把「列出图谱」误当成「列出允许执行的子命令」；子命令白名单见下。
+- **允许的 CLI 子命令（仅此列表，与 `scripts/cli/main.py` 一致）**：`list-apis`、`get-api-spec`、`list-knowledge-graphs`、`get-knowledge-graph`、`ingest-knowledge-graph`、`remove-knowledge-graph-entities`、`list-learning-plans`、`create-learning-plan`、`extend-learning-plan-topics`、`get-mode-context`、`add-interaction-record`。
+- 终端拉取某图下的概念摘要：优先使用 **`get-knowledge-graph`**（`--graph-id`，可选 `--topic-id`、`--concept-limit`、`--offset`）。**不存在** `get-concepts` 子命令。
+
 ---
 
 ## 1) 元信息 API
@@ -326,6 +334,8 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
 ```
 
 ### `get_concepts(graph_id, concept_scope, detail='brief', concept_limit=20, offset=None)`
+
+位于 `scripts.knowledge_graph.api`，供编排或脚本直接调用。**无对应 CLI 子命令**，也未暴露为 `OrchestrationAppService` 的公开方法。若仅需从终端按图/主题浏览概念，请使用编排 API **`get_knowledge_graph`**（CLI：`get-knowledge-graph`）；其返回的 `concept_briefs` 每条含 `short_definition`、`difficulty`（不要用 `definition` / `difficulty_level` 臆测字段名）。brief 模式下 `get_concepts` 返回的 `concept_briefs` 条目同样使用 `short_definition` 与 `difficulty`（与 `get_knowledge_graph` 对齐）。
 
 **请求示例**
 
