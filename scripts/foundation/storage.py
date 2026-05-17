@@ -193,6 +193,9 @@ CREATE TABLE IF NOT EXISTS LearningPlan (
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_active_plan_per_learner_graph
+ON LearningPlan(learnerId, graphId)
+WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS LearningPlanTopic (
     learningPlanTopicId TEXT PRIMARY KEY,
