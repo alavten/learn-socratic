@@ -97,7 +97,7 @@ def test_cli_end_to_end_ingest_plan_prompt_record(isolated_db, tmp_path):
     commit = _run_cli(
         [
             "add-interaction-record",
-            "--context-id",
+            "--plan-id",
             plan_id,
             "--mode",
             "learn",
@@ -125,7 +125,7 @@ def test_cli_end_to_end_ingest_plan_prompt_record(isolated_db, tmp_path):
     commit_c2 = _run_cli(
         [
             "add-interaction-record",
-            "--context-id",
+            "--plan-id",
             plan_id,
             "--mode",
             "quiz",
@@ -172,7 +172,7 @@ def test_cli_add_interaction_record_unknown_concept_stderr_json(isolated_db, tmp
     proc = _run_cli_expect_failure(
         [
             "add-interaction-record",
-            "--context-id",
+            "--plan-id",
             plan_id,
             "--mode",
             "learn",

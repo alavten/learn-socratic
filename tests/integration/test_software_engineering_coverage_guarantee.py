@@ -70,7 +70,7 @@ def test_software_engineering_full_path_coverage_and_methodology(isolated_db, tm
         _run_cli(
             [
                 "add-interaction-record",
-                "--context-id",
+                "--plan-id",
                 plan_id,
                 "--mode",
                 mode,

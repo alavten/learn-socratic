@@ -537,6 +537,19 @@ python -m scripts.cli.main get-mode-context --mode review \
 }
 ```
 
+**CLI**（`--plan-id` 与上文 JSON 中的 `plan_id` 一致，对应学习计划 id）
+
+```bash
+python -m scripts.cli.main add-interaction-record \
+  --plan-id 7a8d3be0-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
+  --mode quiz \
+  --concept-id c1 \
+  --result correct \
+  --score 88 \
+  --difficulty-bucket medium \
+  --latency-ms 1200
+```
+
 **响应示例**
 
 ```json

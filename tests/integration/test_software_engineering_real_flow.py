@@ -63,7 +63,7 @@ def test_real_flow_with_software_engineering_materials(isolated_db, tmp_path):
     learn_commit = _run_cli(
         [
             "add-interaction-record",
-            "--context-id",
+            "--plan-id",
             plan_id,
             "--mode",
             "learn",
@@ -88,7 +88,7 @@ def test_real_flow_with_software_engineering_materials(isolated_db, tmp_path):
     quiz_commit = _run_cli(
         [
             "add-interaction-record",
-            "--context-id",
+            "--plan-id",
             plan_id,
             "--mode",
             "quiz",
@@ -112,7 +112,7 @@ def test_real_flow_with_software_engineering_materials(isolated_db, tmp_path):
     review_commit = _run_cli(
         [
             "add-interaction-record",
-            "--context-id",
+            "--plan-id",
             plan_id,
             "--mode",
             "review",

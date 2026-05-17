@@ -106,7 +106,7 @@ def _parser() -> argparse.ArgumentParser:
     )
 
     append_record = sub.add_parser("add-interaction-record", help="Add an interaction record")
-    append_record.add_argument("--context-id", required=True, help="Learning plan id")
+    append_record.add_argument("--plan-id", required=True, help="Learning plan id")
     append_record.add_argument("--mode", choices=["learn", "quiz", "review"], required=True)
     append_record.add_argument("--concept-id", required=True)
     append_record.add_argument("--result", default="ok")
@@ -212,7 +212,7 @@ def _dispatch_cli(service: Any, args: argparse.Namespace) -> None:
             record_payload["latency_ms"] = args.latency_ms
         _print_json(
             service.add_interaction_record(
-                plan_id=args.context_id,
+                plan_id=args.plan_id,
                 mode=args.mode,
                 record_payload=record_payload,
             )

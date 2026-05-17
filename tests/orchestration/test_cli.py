@@ -101,7 +101,7 @@ def test_cli_append_record_optional_fields(monkeypatch):
         [
             "cli.py",
             "add-interaction-record",
-            "--context-id",
+            "--plan-id",
             "p1",
             "--mode",
             "quiz",

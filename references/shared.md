@@ -29,6 +29,7 @@ When user provides only one local file path (for example, `/path/to/doc.pdf`) wi
 1. Skip shared clarification flow and route directly to `ingest`.
 2. Pass the provided file path as ingest input.
 3. If the path format is ambiguous, ask one concise confirmation question before ingest.
+4. If the file is a **book or large document** (whole PDF, long markdown, multi-chapter EPUB): propose one stable `graph_id` for the title, then ingest **chapter by chapter** into that same graph (see `ingest.md` “书籍与大文档导入”); do not attempt a single full-book payload in one turn.
 
 ### Chapter/topic scope
 

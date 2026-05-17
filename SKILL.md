@@ -24,7 +24,8 @@ Applies to every session regardless of mode.
 - Follow exactly one active mode contract (`shared`/`ingest`/`learn`/`quiz`/`review`) per turn; never mix per-mode rules.
 - Keep this file thin: mode-specific fields/steps live only in reference contract files (`references/*.md`).
 - Do not use memory-only fallback as primary evidence; run required API discovery first.
-- For multi-graph courses or books, do not leave chapter graphs as parallel roots: create a parent `graph_id`, set each chapter’s `graph.parent_graph_id`, and keep a shared `graph.graph_name` prefix (see `references/ingest.md` “书系拆章”) unless the user explicitly wants isolated graphs.
+- **Books and large documents**: use one stable `graph_id` for the whole book; ingest **one chapter per turn** into that same graph (chapters as `topics` with `topic_type: chapter`, sections under `parent_topic_id`). Do not split a single book into parallel root graphs or try to build the full book payload in one shot. See `references/ingest.md` (“书籍与大文档导入”).
+- Legacy multi-`graph_id` + `parent_graph_id` is only when the user explicitly wants isolated chapter graphs (see `references/ingest.md` “书系拆章（遗留）”).
 - **Learning telemetry is mandatory** for `learn` / `quiz` / `review`.
 - After each taught concept or judged learner answer, immediately call `add_interaction_record` with `concept_id` and outcome payload.
 - Do not introduce the next concept, emit the next question, advance a review queue, or hand off modes until the previous record write succeeds or recovery is surfaced.
