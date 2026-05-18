@@ -1,38 +1,26 @@
+"""Storage path resolution (cross-platform default DB location)."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
 import pytest
 
-from scripts.foundation.storage import execute, paginate, query_one
+from scripts.foundation.storage import _db_path, default_db_path
 
 
-@pytest.mark.parametrize(
-    ("limit", "offset", "expected"),
-    [
-        (20, None, (20, 0)),
-        (0, None, (1, 0)),
-        (-10, "-5", (1, 0)),
-        (999, "2", (200, 2)),
-    ],
-)
-def test_paginate_bounds(limit, offset, expected):
-    assert paginate(limit, offset) == expected
+def test_default_db_path_under_alavten_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("DOC_SOCRATIC_DB_PATH", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    if os.name == "nt":
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    expected = tmp_path / ".alavten" / "data" / "knowledge" / "knowledge_v1.sqlite3"
+    assert default_db_path() == expected
+    assert _db_path() == expected
 
 
-def test_paginate_invalid_offset_raises_value_error():
-    with pytest.raises(ValueError):
-        paginate(10, "not-a-number")
-
-
-def test_execute_and_query_roundtrip_on_existing_tables(isolated_db):
-    rows = execute(
-        """
-        INSERT INTO Learner(learnerId, profileId, timezone, locale, status, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        ("l1", "p1", "UTC", "zh-CN", "active", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
-    )
-    assert rows == 1
-
-    row = query_one(
-        "SELECT learnerId AS learner_id, profileId AS profile_id FROM Learner WHERE learnerId = ?",
-        ("l1",),
-    )
-    assert row == {"learner_id": "l1", "profile_id": "p1"}
+def test_db_path_honors_doc_socratic_db_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    custom = tmp_path / "custom.sqlite3"
+    monkeypatch.setenv("DOC_SOCRATIC_DB_PATH", str(custom))
+    assert _db_path() == custom

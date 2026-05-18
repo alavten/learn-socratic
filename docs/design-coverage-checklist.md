@@ -34,7 +34,7 @@
 
 - [x] Unit tests added for knowledge graph, learning, orchestration.
 - [x] Integration test added for full loop execution.
-- [x] DB path override enabled via `DOC_SOCRATIC_DB_PATH` for isolated tests.
+- [x] Default DB at `~/.alavten/data/knowledge/knowledge_v1.sqlite3` (`Path.home()`); override via `DOC_SOCRATIC_DB_PATH` for isolated tests.
 
 ## Terminology Consistency
 

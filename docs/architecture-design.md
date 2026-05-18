@@ -325,10 +325,11 @@ doc-socratic-learning-optimized/
 │  ├─ learn.md
 │  ├─ quiz.md
 │  └─ review.md
-├─ data/                                      # 与 scripts 同级：持久化数据目录
-│  ├─ skill.sqlite3                           # SQLite 主库文件
-│  ├─ skill.sqlite3-wal                       # WAL 日志文件（运行时生成，不纳入版本控制）
-│  └─ skill.sqlite3-shm                       # 共享内存文件（运行时生成，不纳入版本控制）
+├─ data/                                      # 可选：本地遗留/开发用（默认库在用户目录，见下）
+│  └─ prompt-validation-runs/                # 提示词校验运行产物
+# 默认 SQLite 主库（跨平台，由 storage.default_db_path() 解析）：
+#   ~/.alavten/data/knowledge/knowledge_v1.sqlite3
+#   （及运行时 knowledge_v1.sqlite3-wal / -shm）
 ├─ scripts/
 │  ├─ orchestration/                          # L3 编排与接口层
 │  │  ├─ orchestration_app_service.py         # 编排应用服务（含 list_apis/get_api_spec）
@@ -527,5 +528,5 @@ sequenceDiagram
 
 ### 4.5 基础技术支撑（L5）
 
-- **DB 适配**：采用 **SQLite** 进行持久化；由 `scripts/foundation/storage.py` 统一封装存取，库文件默认落在 `data/skill.sqlite3`（与 `scripts/` 同级目录）。
+- **DB 适配**：采用 **SQLite** 进行持久化；由 `scripts/foundation/storage.py` 统一封装存取，库文件默认落在用户目录 `~/.alavten/data/knowledge/knowledge_v1.sqlite3`（macOS/Linux 与 Windows 均通过 `Path.home()` 解析）。测试或自定义部署可用环境变量 `DOC_SOCRATIC_DB_PATH` 覆盖。
 - **日志记录**：记录关键流程节点与错误上下文，支持问题定位与最小化运行追踪。

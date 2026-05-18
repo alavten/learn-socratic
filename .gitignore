@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 *.so
 
-# Runtime artifacts (L4 state + execution outputs, never tracked)
+# Runtime artifacts (legacy repo-local DB; production default is ~/.alavten/data/knowledge/)
 data/skill.sqlite3
 data/skill.sqlite3-wal
 data/skill.sqlite3-shm

@@ -9,15 +9,16 @@ from pathlib import Path
 from typing import Any, Iterator, Sequence
 
 
-def _root_dir() -> Path:
-    return Path(__file__).resolve().parents[2]
+def default_db_path() -> Path:
+    """Cross-platform user data dir: ~/.alavten/data/knowledge/knowledge_v1.sqlite3."""
+    return Path.home() / ".alavten" / "data" / "knowledge" / "knowledge_v1.sqlite3"
 
 
 def _db_path() -> Path:
     from_env = os.getenv("DOC_SOCRATIC_DB_PATH")
     if from_env:
         return Path(from_env)
-    return _root_dir() / "data" / "skill.sqlite3"
+    return default_db_path()
 
 
 def _ensure_parent(path: Path) -> None:

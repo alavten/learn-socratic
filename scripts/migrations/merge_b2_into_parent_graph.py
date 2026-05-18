@@ -4,8 +4,11 @@ Preserves all Concept and LearningPlan rows (no DELETE on those tables).
 Resolves uq_concept_current duplicate by setting one AGENTS row to dr=1 before co-locating graphIds.
 
 Usage:
-  python scripts/migrations/merge_b2_into_parent_graph.py --db-path data/skill.sqlite3 --dry-run
-  python scripts/migrations/merge_b2_into_parent_graph.py --db-path data/skill.sqlite3
+  python scripts/migrations/merge_b2_into_parent_graph.py \\
+    --db-path ~/.alavten/data/knowledge/knowledge_v1.sqlite3 --dry-run
+  python scripts/migrations/merge_b2_into_parent_graph.py \\
+    --db-path ~/.alavten/data/knowledge/knowledge_v1.sqlite3
+  # Or set DOC_SOCRATIC_DB_PATH / pass your copy of the production DB.
 """
 
 from __future__ import annotations
@@ -167,7 +170,7 @@ def main() -> None:
         "--db-path",
         type=Path,
         required=True,
-        help="Path to skill.sqlite3 (use absolute path outside repo if needed)",
+        help="Path to knowledge SQLite DB (default install: ~/.alavten/data/knowledge/knowledge_v1.sqlite3)",
     )
     parser.add_argument("--dry-run", action="store_true", help="Run precheck only, no writes")
     args = parser.parse_args()

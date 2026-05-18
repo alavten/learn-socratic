@@ -595,7 +595,7 @@ python -m scripts.cli.main add-interaction-record \
 ## 7) 图谱硬删除、剪枝与备份回滚
 
 - **硬删除**：`remove_knowledge_graph_entities` 与 `upsert_and_prune` 剪枝均为物理删除 SQLite 行；不提供应用层 `restore`。
-- **备份**：执行 `--force-delete` 或大批量剪枝前，建议复制环境变量 `DOC_SOCRATIC_DB_PATH` 指向的库文件（或整库目录）作为快照，以便故障时恢复。
+- **备份**：执行 `--force-delete` 或大批量剪枝前，建议复制当前使用的库文件（默认 `~/.alavten/data/knowledge/knowledge_v1.sqlite3`，或环境变量 `DOC_SOCRATIC_DB_PATH` 指向的路径；含 WAL 时一并复制 `-wal`/`-shm`）作为快照，以便故障时恢复。
 - **灰度**：先在副本库上跑 `remove` / `upsert_and_prune`，校验 `dependency_check` 与 `delete_summary` 后再对生产库操作。
 
 ---
