@@ -6,6 +6,7 @@
 - Required context is missing (`plan_id`, `topic_id`, or target graph).
 - A mode workflow cannot continue due to recoverable validation errors.
 - User asks to update or correct learning records (掌握记录、学习轨迹、上次评分/结果).
+- User asks to view or fetch graph chapter/section/topic content (browse/export, not learn/quiz/review).
 
 ## Steps
 
@@ -18,35 +19,25 @@
 3. Ask one concise clarification question that asks user to choose **plan** or **graph** first (not mode first).
 4. After explicit user selection, return control to router (`../SKILL.md` Intent Matrix) for final mode selection.
 
-## Scenarios (small cases)
+## Scenarios
 
 These scenarios are short clarifiers used only to decide the next hop.
 
 ### Single file path only
 
-When user provides only one local file path (for example, `/path/to/doc.pdf`) without additional learning intent:
+When user provides only one local file path without additional learning intent, skip shared clarification and hand off to `ingest` (`references/ingest.md`).
 
-1. Skip shared clarification flow and route directly to `ingest`.
-2. Pass the provided file path as ingest input.
-3. If the path format is ambiguous, ask one concise confirmation question before ingest.
-4. If the file is a **book or large document** (whole PDF, long markdown, multi-chapter EPUB): propose one stable `graph_id` for the title, then ingest **chapter by chapter** into that same graph (see `ingest.md` “书籍与大文档导入”); do not attempt a single full-book payload in one turn.
+### Get chapter/topic content (CLI)
 
-### Chapter/topic scope
+When user asks to view or fetch a specific graph chapter/section/topic (e.g. "第3章有哪些概念", "看一下事务隔离这一节") without starting learn/quiz/review:
 
-When user asks to learn a specific chapter/section/topic (for example, "学第3章", "讲解事务隔离"):
+1. Resolve `graph_id` and `topic_id` via the discovery flow above if missing; if only a chapter/section name is given, run `get-knowledge-graph` once without `--topic-id` and match against `topics`.
+2. From the skill repo root, fetch scoped content:
 
-1. Prefer existing `plan_id` if user picks a plan; otherwise pick `graph_id`, then narrow to `topic_id` if needed.
-2. If multiple candidates exist, present short options and ask user to choose exactly one.
-3. After selection, hand off to `learn` (or `review/quiz` if user explicitly requests).
-4. When the learner moves from one chapter to another under the same plan/graph (multi-chapter progression), call **`extend_learning_plan_topics(plan_id, [new_topic_id, ...])`** after resolving chapter IDs so `get_learning_context` scope and plan summaries stay accurate (unless those topics are already linked).
+   `python -m scripts.cli.main get-knowledge-graph --graph-id GRAPH_ID --topic-id TOPIC_ID [--concept-limit 20] [--offset OFFSET]`
 
-### Learning record correction
-
-When user asks to fix stored outcomes (scores/results/history), clarify scope then hand off:
-
-- Minimum scope: `plan_id` + target (`concept_id` or `topic_id`) + what to correct (`result` / `score` / `difficulty_bucket` / redo last turn).
-- If target is unknown, propose a small candidate list and ask one choice question.
-- Hand off to the target practice mode (`learn` / `quiz` / `review`) to perform the write.
+3. If the response has `has_more=true`, paginate with `--offset` set to `next_offset` until enough for the user or they stop.
+4. Return `topics`, `topic_concepts`, and `concept_briefs` from the CLI JSON; stay in `shared` (do not hand off to `learn` unless the user then asks to study).
 
 ### Main-mode failure recovery
 

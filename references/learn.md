@@ -10,16 +10,17 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 1. Preflight (once per session): `get_api_spec("get_learn_context")`.
 2. If `plan_id` is missing, route to `shared` for discovery tables and selection first.
-3. Fetch learn prompt context after explicit user selection:
+3. If the user names a chapter/section but `topic_id` is missing, resolve it from the plan's graph via `get_knowledge_graph(graph_id)` and match against `topics` before fetching context.
+4. Fetch learn prompt context after explicit user selection:
    - `get_learn_context(plan_id, topic_id?)`
-4. Reconcile before a new round: if the prior turn taught a concept or judged a concept check but `add_interaction_record` did not succeed, flush the pending taught concept record or judged answer record now. Do not issue new explanation or a new check until the pending record is written or recovery is surfaced per Retry / Fallback.
-5. Run Socratic teaching interaction with returned `prompt_text`.
-6. Persist a learning record after each concept is taught:
+5. Reconcile before a new round: if the prior turn taught a concept or judged a concept check but `add_interaction_record` did not succeed, flush the pending taught concept record or judged answer record now. Do not issue new explanation or a new check until the pending record is written or recovery is surfaced per Retry / Fallback.
+6. Run Socratic teaching interaction with returned `prompt_text`.
+7. Persist a learning record after each concept is taught:
    - `add_interaction_record(plan_id, mode="learn", record_payload)`
    - minimum: `record_payload={"concept_id": "...", "result": "partial"}`
    - recommended: include a conservative `score` and `difficulty_bucket` so exposure is tracked without treating explanation text as mastery evidence
    - MUST: after each concept is taught, write record immediately before any next concept/question/mode handoff
-7. Persist another learning record when its concept check is judged:
+8. Persist another learning record when its concept check is judged:
    - `add_interaction_record(plan_id, mode="learn", record_payload)`
    - minimum: `record_payload={"concept_id": "...", "result": "ok|partial|blocked"}`
    - recommended: include `score`, `difficulty_bucket`, and `latency_ms` for later quiz/review scheduling
