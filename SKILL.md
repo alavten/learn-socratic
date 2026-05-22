@@ -27,6 +27,7 @@ Applies to every session regardless of mode.
 - **Books and large documents**: use one stable `graph_id` for the whole book; ingest **one chapter per turn** into that same graph (chapters as `topics` with `topic_type: chapter`, sections under `parent_topic_id`). Do not split a single book into parallel root graphs or try to build the full book payload in one shot. See `references/ingest.md` (“书籍与大文档导入”).
 - Legacy multi-`graph_id` + `parent_graph_id` is only when the user explicitly wants isolated chapter graphs (see `references/ingest.md` “书系拆章（遗留）”).
 - **Learning telemetry is mandatory** for `learn` / `quiz` / `review`.
+- **Quiz storage granularity** is always one `add_interaction_record` per judged question, regardless of `quiz_pacing` (`per_concept` vs `per_chapter`); pacing only changes how many questions appear in one user turn.
 - After each taught concept or judged learner answer, immediately call `add_interaction_record` with `concept_id` and outcome payload.
 - Do not introduce the next concept, emit the next question, advance a review queue, or hand off modes until the previous record write succeeds or recovery is surfaced.
 - Keep responses concise and evidence-grounded.
@@ -40,8 +41,9 @@ Map natural language intent to target mode and reference contract file:
 | ------------------------------------------- | ----------- | ----------------- |
 | import materials, build graph, update graph | `ingest`    | `references/ingest.md` |
 | explain, teach me, learn                    | `learn`     | `references/learn.md`  |
-| test me, quiz, ask questions                | `quiz`      | `references/quiz.md`   |
+| test me, quiz, ask questions, 一题一题, 批量测验, 一章测验 | `quiz`      | `references/quiz.md`   |
 | review, recap, due items                    | `review`    | `references/review.md` |
+| weak points, mastery report, chapter performance, 薄弱点, 掌握程度 | `shared` (discovery) then diagnostics CLI | `references/shared.md` |
 | ambiguous or conflicting intent             | `shared`    | `references/shared.md` |
 
 Routing flow rules:
@@ -50,6 +52,31 @@ Routing flow rules:
 2. In-session mode switching must return to this router first, then dispatch to the new target mode.
 3. If target mode file is unavailable or dispatch fails, return `summary` with failure reason and `next_step` to continue in `shared`.
 4. `shared` also handles recoverable execution failures and long-tail capability discovery, then must hand off back to one main mode (`ingest`/`learn`/`quiz`/`review`) when context is ready.
+
+## Mastery / weak-point diagnostics
+
+When the user asks for **weak points**, **mastery by chapter**, or **learning performance analysis** (not an interactive review/quiz turn):
+
+1. If `plan_id` is unknown, run discovery (`list-learning-plans` or `shared` flow) and let the user pick a plan.
+2. Call **`get-mastery-diagnostics`** once and read the JSON (`by_topic`, `by_concept`, `ranked_weak_concepts`, `summary`). Do **not** query SQLite or invent table names.
+3. Optional scope: `--topic-id` for a chapter subtree, or `--concept-id` for a concept plus all `part_of` sub-concepts.
+4. After the report, route to `review` / `learn` / `quiz` with a concrete `next_step`.
+
+**Shell (required prefix on every command):** `cd <skill-repo-root> && python -m scripts.cli.main …`
+
+Examples:
+
+`cd …/learn-socratic && python -m scripts.cli.main get-mastery-diagnostics --plan-id PLAN_ID`
+
+`cd …/learn-socratic && python -m scripts.cli.main get-mastery-diagnostics --plan-id PLAN_ID --topic-id t1`
+
+`cd …/learn-socratic && python -m scripts.cli.main get-mastery-diagnostics --plan-id PLAN_ID --concept-id c1`
+
+**Forbidden for diagnostics:** opening `data/skill.sqlite3`, ad-hoc SQL, or `from scripts.knowledge_graph.api import create_app`. Python entry point when needed: `from scripts.app import create_app`.
+
+**`list-learning-plans` semantics:** `progress.pending_tasks` counts **LearningTask** queue rows, not “number of review questions due”.
+
+**`get-mode-context` vs diagnostics:** CLI stdout includes `context_summary` for **session continuation** in learn/quiz/review; for mastery reports use **`get-mastery-diagnostics`** instead.
 
 ## CLI Hints
 
@@ -63,13 +90,13 @@ Run commands from the skill repo root (the directory that contains `scripts/`), 
 
 **Allowed CLI subcommands only** (must match `scripts/cli/main.py`; do not invent names such as `get-concepts`):
 
-`list-apis`, `get-api-spec`, `list-knowledge-graphs`, `get-knowledge-graph`, `ingest-knowledge-graph`, `remove-knowledge-graph-entities`, `list-learning-plans`, `create-learning-plan`, `extend-learning-plan-topics`, `get-mode-context`, `add-interaction-record`
+`list-apis`, `get-api-spec`, `list-knowledge-graphs`, `get-knowledge-graph`, `ingest-knowledge-graph`, `remove-knowledge-graph-entities`, `list-learning-plans`, `create-learning-plan`, `extend-learning-plan-topics`, `get-mode-context`, `get-mastery-diagnostics`, `add-interaction-record`
 
 **Notes**
 
 - There is **no** `get-concepts` CLI. To fetch concept briefs from the terminal by graph (and optionally topic), use **`get-knowledge-graph`** with `--graph-id` and optional `--topic-id`, `--concept-limit`, `--offset`.
 - `scripts.knowledge_graph.api.get_concepts` is a **Python module** helper, not a method on `OrchestrationAppService` and not exposed as a subcommand.
-- Some orchestration APIs (e.g. `get_discovery_context`) have **no** dedicated CLI; call them via `create_app()` in Python (or `call_api` if you use it).
+- Some orchestration APIs (e.g. `get_discovery_context`) have **no** dedicated CLI; call them via `from scripts.app import create_app` in Python (or `call_api` if you use it).
 
 Example:
 

@@ -1,5 +1,6 @@
 from scripts.knowledge_graph.api import ingest_knowledge_graph
 from scripts.knowledge_graph.store import (
+    collect_concept_ids_with_descendants,
     get_topic_concepts,
     list_graphs,
     resolve_scope_concepts,
@@ -101,3 +102,37 @@ def test_resolve_scope_concepts_priority_and_fallback(isolated_db):
 def test_resolve_scope_concepts_empty_when_no_data(isolated_db):
     concepts = resolve_scope_concepts("unknown-graph", {})
     assert concepts == []
+
+
+def test_collect_concept_ids_with_descendants_part_of_chain(isolated_db):
+    payload = sample_graph_payload()
+    payload["concepts"].append(
+        {
+            "concept_id": "c3",
+            "canonical_name": "Sub-variable",
+            "definition": "Nested variable detail.",
+            "concept_type": "fundamental",
+            "difficulty_level": "easy",
+        }
+    )
+    payload["relations"].append(
+        {
+            "concept_relation_id": "r-part",
+            "from_concept_id": "c3",
+            "to_concept_id": "c1",
+            "relation_type": "part_of",
+        }
+    )
+    payload["relation_evidences"].append(
+        {
+            "relation_evidence_id": "re-part",
+            "concept_relation_id": "r-part",
+            "evidence_id": "e1",
+            "support_score": 0.8,
+        }
+    )
+    ingest_knowledge_graph("g-part", payload)
+
+    assert set(collect_concept_ids_with_descendants("g-part", ["c1"])) == {"c1", "c3"}
+    assert collect_concept_ids_with_descendants("g-part", ["c3"]) == ["c3"]
+    assert collect_concept_ids_with_descendants("g-part", []) == []

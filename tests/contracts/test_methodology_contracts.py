@@ -75,8 +75,12 @@ def test_modes_require_per_turn_record_write_and_no_progress_on_write_failure():
     assert "Multiple records for the same `concept_id` are valid append-only learning events" in learn
     assert "do not advance to next concept/question/mode handoff" in learn
 
+    assert "Reconcile" in quiz
+    assert "quiz_pacing" in quiz
+    assert "per_chapter" in quiz
+    assert "record_summary" in quiz
     assert "MUST: after each learner answer is judged, write record immediately" in quiz
-    assert "before emitting next question or handing off modes" in quiz
+    assert "before emitting the next question in the same turn or handing off modes" in quiz
     assert "no next question or mode handoff in same turn" in quiz
 
     assert "MUST: after each learner answer is judged, write record immediately before queue advance" in review

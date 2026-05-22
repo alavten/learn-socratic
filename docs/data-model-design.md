@@ -498,7 +498,7 @@ erDiagram
 - `difficultyBucket`：`easy`、`medium`、`hard`
 - `masteryLevel`：`New`、`Learning`、`Proficient`、`Mastered`
 - `taskType`：`learn`、`review`
-- `relationType`：`prerequisite_of`、`part_of`、`contrast_with`、`applied_in`、`related_to`
+- `relationType`：`prerequisite_of`、`part_of`、`contrast_with`、`applied_in`、`related_to`；其中 **`part_of`**：`fromConceptId part_of toConceptId` 表示 *from* 是 *to* 的子概念，诊断/API 展开子概念时沿该边从父到子遍历；其中 **`part_of`**：`fromConceptId part_of toConceptId` 表示 *from* 为 *to* 的子概念，掌握度诊断按锚点概念展开子概念闭包时使用该方向
 - `reasonType`：`overdue`、`upcoming`、`weak_point`、`manual`
 
 ---

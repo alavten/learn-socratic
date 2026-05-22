@@ -102,8 +102,24 @@ def _parser() -> argparse.ArgumentParser:
     mode_context.add_argument("--topic-id")
     mode_context.add_argument(
         "--session-context-json",
-        help="Optional JSON string for review session state (served_concept_ids/last_result/etc.)",
+        help=(
+            "Optional JSON session state: review (served_concept_ids, last_result, ...); "
+            "quiz (quiz_pacing, batch_size, pending_items, served_concept_ids)"
+        ),
     )
+
+    mastery_diag = sub.add_parser(
+        "get-mastery-diagnostics",
+        help="Return mastery and weak-point diagnostics JSON for a learning plan",
+    )
+    mastery_diag.add_argument("--plan-id", required=True)
+    scope_group = mastery_diag.add_mutually_exclusive_group()
+    scope_group.add_argument("--topic-id", help="Topic/chapter anchor (includes descendant topics)")
+    scope_group.add_argument(
+        "--concept-id",
+        help="Concept anchor (includes part_of sub-concepts)",
+    )
+    mastery_diag.add_argument("--weak-limit", type=int, default=20)
 
     append_record = sub.add_parser("add-interaction-record", help="Add an interaction record")
     append_record.add_argument("--plan-id", required=True, help="Learning plan id")
@@ -189,13 +205,29 @@ def _dispatch_cli(service: Any, args: argparse.Namespace) -> None:
             _print_json(service.get_learn_context(plan_id=args.plan_id, topic_id=args.topic_id))
             return
         if args.mode == "quiz":
-            _print_json(service.get_quiz_context(plan_id=args.plan_id, topic_id=args.topic_id))
+            _print_json(
+                service.get_quiz_context(
+                    plan_id=args.plan_id,
+                    topic_id=args.topic_id,
+                    session_context=session_context,
+                )
+            )
             return
         _print_json(
             service.get_review_context(
                 plan_id=args.plan_id,
                 topic_id=args.topic_id,
                 session_context=session_context,
+            )
+        )
+        return
+    if args.command == "get-mastery-diagnostics":
+        _print_json(
+            service.get_mastery_diagnostics(
+                plan_id=args.plan_id,
+                topic_id=args.topic_id,
+                concept_id=args.concept_id,
+                weak_limit=args.weak_limit,
             )
         )
         return

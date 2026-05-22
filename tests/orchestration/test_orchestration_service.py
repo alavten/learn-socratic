@@ -16,6 +16,9 @@ def test_api_self_description(isolated_db):
     assert "concept_briefs" in get_graph_spec["output_schema"]["properties"]
     discovery_spec = service.get_api_spec("get_discovery_context")
     assert discovery_spec["name"] == "get_discovery_context"
+    assert "get_mastery_diagnostics" in names
+    diag_spec = service.get_api_spec("get_mastery_diagnostics")
+    assert "plan_id" in diag_spec["input_schema"]["required"]
 
 
 def test_prompt_generation_and_record_commit(isolated_db):
@@ -30,6 +33,20 @@ def test_prompt_generation_and_record_commit(isolated_db):
         {"concept_id": "c1", "result": "ok", "score": 80, "difficulty_bucket": "easy"},
     )
     assert "state_delta_summary" in commit
+
+
+def test_get_mastery_diagnostics_orchestration(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    service = OrchestrationAppService()
+    plan = service.create_learning_plan("g1", topic_id="t1")
+    service.add_interaction_record(
+        plan["plan_id"],
+        "learn",
+        {"concept_id": "c1", "result": "ok", "score": 75},
+    )
+    diag = service.get_mastery_diagnostics(plan["plan_id"], topic_id="t1")
+    assert diag["scope"]["kind"] == "topic"
+    assert diag["summary"]["concepts_with_state"] >= 1
 
 
 def test_remove_knowledge_graph_entities_api_listed(isolated_db):
@@ -51,6 +68,30 @@ def test_ingest_with_prune_scope_optional(isolated_db):
     )
     assert out["validation_summary"]["ok"] is True
     assert "prune_result" not in out
+
+
+def test_quiz_context_resolves_pacing_and_next_session_context(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    service = OrchestrationAppService()
+    plan = service.create_learning_plan("g1", topic_id="t1")
+
+    default_quiz = service.get_quiz_context(plan["plan_id"], topic_id="t1")
+    summary = default_quiz["context_summary"]
+    assert summary["quiz_pacing"] == "per_concept"
+    assert summary["suggested_batch_size"] == 1
+    assert "next_session_context" in summary
+    assert "per_concept" in default_quiz["prompt_text"]
+
+    batch_quiz = service.get_quiz_context(
+        plan["plan_id"],
+        topic_id="t1",
+        session_context={"quiz_pacing": "per_chapter", "batch_size": 4},
+    )
+    batch_summary = batch_quiz["context_summary"]
+    assert batch_summary["quiz_pacing"] == "per_chapter"
+    assert batch_summary["suggested_batch_size"] == 4
+    assert batch_summary["next_session_context"]["quiz_pacing"] == "per_chapter"
+    assert "per_chapter" in batch_quiz["prompt_text"]
 
 
 def test_review_prompt_builds_session_queue_and_skips_served_concept(isolated_db):

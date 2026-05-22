@@ -20,6 +20,7 @@
 - API 发现：`list-apis`、`get-api-spec`
 - 图谱运维：`list-knowledge-graphs`、`get-knowledge-graph`、`ingest-knowledge-graph`、`remove-knowledge-graph-entities`
 - 学习运维：`list-learning-plans`、`create-learning-plan`、`extend-learning-plan-topics`
+- 掌握度诊断：`get-mastery-diagnostics`
 - 交互运行：`get-mode-context --mode learn` / `get-mode-context --mode quiz` / `get-mode-context --mode review`
 - 记录提交：`add-interaction-record`
 
@@ -50,7 +51,7 @@ python -m scripts.cli.main list-apis
 - **编排 API 名称**（snake_case）以 `list_apis()` / CLI `list-apis` 返回的 `name` 为准，与 [`orchestration_app_service` 的 `API_SPECS`](architecture-design.md) 一致。
 - **入参 JSON Schema**：CLI `get-api-spec --api-name <snake_case>`（等价于 `get_api_spec(api_name)`）。
 - **`graph_id` 取值**：CLI `list-knowledge-graphs` 列出库中图谱元数据（`items` 等），用于填写各命令的 `--graph-id`。**不要**把「列出图谱」误当成「列出允许执行的子命令」；子命令白名单见下。
-- **允许的 CLI 子命令（仅此列表，与 `scripts/cli/main.py` 一致）**：`list-apis`、`get-api-spec`、`list-knowledge-graphs`、`get-knowledge-graph`、`ingest-knowledge-graph`、`remove-knowledge-graph-entities`、`list-learning-plans`、`create-learning-plan`、`extend-learning-plan-topics`、`get-mode-context`、`add-interaction-record`。
+- **允许的 CLI 子命令（仅此列表，与 `scripts/cli/main.py` 一致）**：`list-apis`、`get-api-spec`、`list-knowledge-graphs`、`get-knowledge-graph`、`ingest-knowledge-graph`、`remove-knowledge-graph-entities`、`list-learning-plans`、`create-learning-plan`、`extend-learning-plan-topics`、`get-mode-context`、`get-mastery-diagnostics`、`add-interaction-record`。
 - 终端拉取某图下的概念摘要：优先使用 **`get-knowledge-graph`**（`--graph-id`，可选 `--topic-id`、`--concept-limit`、`--offset`）。**不存在** `get-concepts` 子命令。
 
 ---
@@ -441,9 +442,9 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
 
 返回学习上下文（目标、状态、任务、概念包摘要）。
 
-### `get_quiz_context(plan_id, topic_id=None)`
+### `get_quiz_context(plan_id, topic_id=None, session_context=None)`
 
-返回测验上下文（范围、历史表现、难度提示、约束）。
+返回测验上下文（范围、历史表现、难度提示、约束），并解析 `quiz_pacing`（`per_concept` | `per_chapter`）、`suggested_batch_size`、`next_session_context`。
 
 ### `get_review_context(plan_id, topic_id=None)`
 
@@ -458,12 +459,41 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
 - `queue_policy`：评分权重与 tie-break 策略
 - `scope`：实际生效范围（包含 plan/topic 解析结果）
 
+### `get_mastery_diagnostics(plan_id, topic_id=None, concept_id=None, weak_limit=20)`
+
+返回学习计划内的掌握度与薄弱点诊断 JSON（**非** prompt）。`topic_id` 与 `concept_id` 互斥。
+
+**范围（`scope.kind`）**
+
+| 入参 | 范围 |
+|------|------|
+| 仅 `plan_id` | 计划内主题树展开后的全部概念（`plan`） |
+| `topic_id` | 该主题及其子主题下概念（`topic`） |
+| `concept_id` | 锚点概念 + 沿 `part_of` 的子概念闭包（`concept`） |
+
+**`part_of` 子概念规则**：`fromConceptId part_of toConceptId` 表示 *from* 是 *to* 的子概念；指定 `concept_id` 时诊断包含锚点及其所有子概念（与 `collect_concept_ids_with_descendants` 一致）。
+
+**响应字段**
+
+- `summary`：`concepts_in_scope`、`concepts_with_state`、`mastery_distribution`、`records_by_mode`（仅统计范围内概念）、`avg_mastery_score`
+- `by_topic`：按 `TopicConcept` 聚合；同一概念可出现在多个 topic 行，`summary` 用 distinct `concept_ids` 计数
+- `by_concept`：每概念 `mastery_level`、`mastery_score`、`review_score`、`weakness_score`、答题统计等；无状态行时 `mastery_level` 为 `New`
+- `ranked_weak_concepts`：范围内按 `review_score` 降序 Top `weak_limit`
+
+**CLI 示例**
+
+```bash
+cd <skill-repo-root> && python -m scripts.cli.main get-mastery-diagnostics --plan-id PLAN_ID
+cd <skill-repo-root> && python -m scripts.cli.main get-mastery-diagnostics --plan-id PLAN_ID --topic-id t1
+cd <skill-repo-root> && python -m scripts.cli.main get-mastery-diagnostics --plan-id PLAN_ID --concept-id c1 --weak-limit 10
+```
+
 ---
 
 ## 4) Prompt API
 
 ### `get_learn_context(plan_id, topic_id=None)`
-### `get_quiz_context(plan_id, topic_id=None)`
+### `get_quiz_context(plan_id, topic_id=None, session_context=None)`
 ### `get_review_context(plan_id, topic_id=None, session_context=None)`
 
 以上 API 响应结构一致：
@@ -474,6 +504,28 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
   "context_summary": {}
 }
 ```
+
+`get_quiz_context` 支持测验节奏与会话续跑：
+
+```json
+{
+  "plan_id": "7a8d3be0-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "topic_id": "t1",
+  "session_context": {
+    "quiz_pacing": "per_chapter",
+    "batch_size": 5,
+    "pending_items": [{"item_id": 1, "concept_id": "c1", "judged": false}],
+    "served_concept_ids": ["c1"]
+  }
+}
+```
+
+`context_summary` 里新增（quiz）：
+- `quiz_pacing` / `suggested_batch_size`
+- `next_session_context`（下一轮 `get_quiz_context` 传入）
+- `pending_items` / `served_concept_ids`
+
+落库不变：每道已判定题仍调用一次 `add_interaction_record(mode=quiz)`；`per_chapter` 一轮多题，turn 末核对 `record_summary`。
 
 `get_review_context` 支持会话级队列推进输入：
 
@@ -489,7 +541,7 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
 }
 ```
 
-`context_summary` 里新增：
+`context_summary` 里新增（review）：
 - `session_queue.items/current_item/next_item`
 - `next_session_context`（用于下一轮继续调用）
 - `candidate_items/review_score_factors/queue_policy`（复习队列综合评分输入）
@@ -497,6 +549,11 @@ python -m scripts.cli.main remove-knowledge-graph-entities --graph-id g1 --paylo
 推荐 CLI（带会话推进上下文）：
 
 ```bash
+python -m scripts.cli.main get-mode-context --mode quiz \
+  --plan-id PLAN_ID \
+  --topic-id t1 \
+  --session-context-json '{"quiz_pacing":"per_chapter","batch_size":5}'
+
 python -m scripts.cli.main get-mode-context --mode review \
   --plan-id PLAN_ID \
   --topic-id t1 \

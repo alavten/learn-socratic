@@ -9,6 +9,11 @@ from typing import Any
 
 from scripts.foundation.storage import paginate, query_all, query_one, transaction
 from scripts.knowledge_graph import api as kg_api
+from scripts.knowledge_graph.store import (
+    collect_concept_ids_with_descendants,
+    collect_topic_ids_with_descendants,
+    resolve_scope_concepts,
+)
 from scripts.learning.session import add_interaction_record as append_record_impl
 from scripts.learning.state import update_state_from_record
 from scripts.learning.tasking import sync_task_status_from_result, upsert_task_for_state
@@ -309,6 +314,378 @@ def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
+def _fetch_perf_by_concept(plan_id: str) -> dict[str, dict[str, Any]]:
+    perf_rows = query_all(
+        """
+        SELECT
+            lr.conceptId AS concept_id,
+            COUNT(*) AS attempt_count,
+            SUM(CASE WHEN LOWER(COALESCE(lr.result, '')) IN ('wrong', 'incorrect', 'fail') THEN 1 ELSE 0 END) AS wrong_count,
+            SUM(CASE WHEN LOWER(COALESCE(lr.result, '')) IN ('correct', 'ok', 'pass') THEN 1 ELSE 0 END) AS correct_count,
+            MAX(lr.occurredAt) AS last_occurred_at
+        FROM LearningRecord lr
+        JOIN LearningSession ls ON ls.sessionId = lr.sessionId
+        WHERE ls.learningPlanId = ?
+        GROUP BY lr.conceptId
+        """,
+        (plan_id,),
+    )
+    return {row["concept_id"]: row for row in perf_rows if row.get("concept_id")}
+
+
+def _fetch_review_state_by_concept(plan_id: str) -> dict[str, dict[str, Any]]:
+    state_rows = query_all(
+        """
+        SELECT
+            conceptId AS concept_id,
+            forgettingRisk AS forgetting_risk,
+            nextReviewAt AS next_review_at
+        FROM LearnerConceptState
+        WHERE learningPlanId = ?
+        """,
+        (plan_id,),
+    )
+    return {row["concept_id"]: row for row in state_rows if row.get("concept_id")}
+
+
+def _fetch_mastery_state_by_concept(plan_id: str) -> dict[str, dict[str, Any]]:
+    state_rows = query_all(
+        """
+        SELECT
+            conceptId AS concept_id,
+            masteryLevel AS mastery_level,
+            masteryScore AS mastery_score,
+            forgettingRisk AS forgetting_risk,
+            correctCount AS correct_count,
+            wrongCount AS wrong_count,
+            learnCount AS learn_count,
+            quizCount AS quiz_count,
+            reviewCount AS review_count
+        FROM LearnerConceptState
+        WHERE learningPlanId = ?
+        """,
+        (plan_id,),
+    )
+    return {row["concept_id"]: row for row in state_rows if row.get("concept_id")}
+
+
+def _fetch_due_items(plan_id: str) -> list[dict[str, Any]]:
+    return query_all(
+        """
+        SELECT
+            learningTaskId AS learning_task_id,
+            conceptId AS concept_id,
+            priorityScore AS priority_score,
+            dueAt AS due_at,
+            reasonType AS reason_type
+        FROM LearningTask
+        WHERE learningPlanId = ? AND status = 'pending'
+        ORDER BY priorityScore DESC, dueAt ASC
+        LIMIT 20
+        """,
+        (plan_id,),
+    )
+
+
+def _compute_concept_review_score(
+    *,
+    concept_id: str,
+    due_item: dict[str, Any],
+    state: dict[str, Any],
+    perf: dict[str, Any],
+    now: datetime,
+) -> dict[str, float]:
+    due_at = _parse_iso_ts(due_item.get("due_at"))
+    overdue_seconds = max(0.0, (now - due_at).total_seconds()) if due_at else 0.0
+    overdue_score = _clamp01(overdue_seconds / 86400.0)
+    risk_score = _clamp01(float(state.get("forgetting_risk") or 0.0))
+
+    attempt_count = int(perf.get("attempt_count") or 0)
+    wrong_count = int(perf.get("wrong_count") or 0)
+    accuracy = (
+        float(perf.get("correct_count") or 0) / attempt_count
+        if attempt_count > 0
+        else 0.5
+    )
+    weakness_score = _clamp01((wrong_count / max(1, attempt_count)) if attempt_count else 0.5)
+
+    last_occurred = _parse_iso_ts(perf.get("last_occurred_at"))
+    recency_days = max(0.0, (now - last_occurred).total_seconds() / 86400.0) if last_occurred else 3.0
+    recency_gap_score = _clamp01(recency_days / 7.0)
+
+    review_score = _clamp01(
+        0.35 * overdue_score
+        + 0.30 * risk_score
+        + 0.20 * weakness_score
+        + 0.15 * recency_gap_score
+    )
+    return {
+        "overdue_score": overdue_score,
+        "forgetting_risk_score": risk_score,
+        "weakness_score": weakness_score,
+        "recency_gap_score": recency_gap_score,
+        "review_score": review_score,
+        "recent_accuracy": accuracy,
+        "attempt_count": float(attempt_count),
+        "wrong_count": float(wrong_count),
+    }
+
+
+def _resolve_mastery_scope(
+    plan_id: str,
+    graph_id: str,
+    *,
+    topic_id: str | None,
+    concept_id: str | None,
+) -> dict[str, Any]:
+    if topic_id and concept_id:
+        return {
+            "error": "invalid_scope",
+            "message": "topic_id and concept_id are mutually exclusive",
+            "plan_id": plan_id,
+        }
+    if concept_id:
+        concept_ids = collect_concept_ids_with_descendants(graph_id, [concept_id])
+        return {
+            "kind": "concept",
+            "anchor_concept_id": concept_id,
+            "anchor_topic_id": None,
+            "concept_ids": concept_ids,
+            "topic_ids": [],
+        }
+    if topic_id:
+        topic_ids = collect_topic_ids_with_descendants(graph_id, [topic_id])
+        concept_ids = resolve_scope_concepts(graph_id, {"topic_ids": topic_ids})
+        return {
+            "kind": "topic",
+            "anchor_concept_id": None,
+            "anchor_topic_id": topic_id,
+            "concept_ids": concept_ids,
+            "topic_ids": topic_ids,
+        }
+    plan_topics = _resolve_plan_scope(plan_id, None).get("topic_ids") or []
+    if plan_topics:
+        topic_ids = collect_topic_ids_with_descendants(graph_id, plan_topics)
+        concept_ids = resolve_scope_concepts(graph_id, {"topic_ids": topic_ids})
+    else:
+        topic_ids = []
+        concept_ids = resolve_scope_concepts(graph_id, {})
+    return {
+        "kind": "plan",
+        "anchor_concept_id": None,
+        "anchor_topic_id": None,
+        "concept_ids": concept_ids,
+        "topic_ids": topic_ids,
+    }
+
+
+def get_mastery_diagnostics(
+    plan_id: str,
+    topic_id: str | None = None,
+    concept_id: str | None = None,
+    weak_limit: int = 20,
+) -> dict[str, Any]:
+    plan = query_one(
+        """
+        SELECT learningPlanId AS plan_id, graphId AS graph_id
+        FROM LearningPlan
+        WHERE learningPlanId = ?
+        """,
+        (plan_id,),
+    )
+    if not plan:
+        return {"error": "plan_not_found", "plan_id": plan_id}
+
+    graph_id = plan["graph_id"]
+    scope = _resolve_mastery_scope(
+        plan_id,
+        graph_id,
+        topic_id=topic_id,
+        concept_id=concept_id,
+    )
+    if scope.get("error"):
+        return scope
+
+    concept_ids = scope.get("concept_ids") or []
+    concept_id_set = set(concept_ids)
+    anchor_concept_id = scope.get("anchor_concept_id")
+
+    perf_by_concept = _fetch_perf_by_concept(plan_id)
+    mastery_by_concept = _fetch_mastery_state_by_concept(plan_id)
+    review_state_by_concept = _fetch_review_state_by_concept(plan_id)
+    due_items = _fetch_due_items(plan_id)
+    due_by_concept = {item["concept_id"]: item for item in due_items if item.get("concept_id")}
+
+    now = datetime.now(timezone.utc)
+    concept_names: dict[str, str] = {}
+    if concept_id_set:
+        placeholders = ",".join("?" for _ in concept_ids)
+        name_rows = query_all(
+            f"""
+            SELECT conceptId AS concept_id, canonicalName AS canonical_name
+            FROM Concept
+            WHERE graphId = ? AND dr = 0 AND conceptId IN ({placeholders})
+            """,
+            (graph_id, *concept_ids),
+        )
+        concept_names = {row["concept_id"]: row["canonical_name"] for row in name_rows}
+
+    concept_to_topics: dict[str, list[str]] = {cid: [] for cid in concept_ids}
+    if concept_id_set:
+        placeholders = ",".join("?" for _ in concept_ids)
+        mapping_rows = query_all(
+            f"""
+            SELECT tc.conceptId AS concept_id, tc.topicId AS topic_id
+            FROM TopicConcept tc
+            JOIN Topic t ON t.topicId = tc.topicId AND t.graphId = ?
+            WHERE tc.conceptId IN ({placeholders})
+            """,
+            (graph_id, *concept_ids),
+        )
+        for row in mapping_rows:
+            cid = row["concept_id"]
+            tid = row["topic_id"]
+            if cid and tid:
+                concept_to_topics.setdefault(cid, []).append(tid)
+
+    by_concept: list[dict[str, Any]] = []
+    mastery_distribution: dict[str, int] = {}
+    mastery_scores: list[float] = []
+    records_by_mode = {"learn": 0, "quiz": 0, "review": 0}
+
+    if concept_id_set:
+        placeholders = ",".join("?" for _ in concept_ids)
+        mode_rows = query_all(
+            f"""
+            SELECT lr.recordType AS record_type, COUNT(*) AS count
+            FROM LearningRecord lr
+            JOIN LearningSession ls ON ls.sessionId = lr.sessionId
+            WHERE ls.learningPlanId = ? AND lr.conceptId IN ({placeholders})
+            GROUP BY lr.recordType
+            """,
+            (plan_id, *concept_ids),
+        )
+        for row in mode_rows:
+            rt = row.get("record_type")
+            if rt in records_by_mode:
+                records_by_mode[rt] = int(row.get("count") or 0)
+
+    for cid in sorted(concept_id_set):
+        mastery = mastery_by_concept.get(cid, {})
+        perf = perf_by_concept.get(cid, {})
+        state = review_state_by_concept.get(cid, mastery)
+        scores = _compute_concept_review_score(
+            concept_id=cid,
+            due_item=due_by_concept.get(cid, {}),
+            state=state,
+            perf=perf,
+            now=now,
+        )
+        mastery_level = mastery.get("mastery_level") or "New"
+        mastery_score = float(mastery.get("mastery_score") or 0.0)
+        mastery_distribution[mastery_level] = mastery_distribution.get(mastery_level, 0) + 1
+        if cid in mastery_by_concept:
+            mastery_scores.append(mastery_score)
+
+        by_concept.append(
+            {
+                "concept_id": cid,
+                "canonical_name": concept_names.get(cid, cid),
+                "topic_ids": sorted(set(concept_to_topics.get(cid, []))),
+                "mastery_level": mastery_level,
+                "mastery_score": mastery_score,
+                "attempt_count": int(scores["attempt_count"]),
+                "wrong_count": int(scores["wrong_count"]),
+                "recent_accuracy": scores["recent_accuracy"],
+                "forgetting_risk": float(state.get("forgetting_risk") or mastery.get("forgetting_risk") or 0.0),
+                "weakness_score": scores["weakness_score"],
+                "review_score": scores["review_score"],
+                "is_scope_anchor": cid == anchor_concept_id,
+            }
+        )
+
+    ranked_weak = sorted(
+        by_concept,
+        key=lambda item: (-(item.get("review_score") or 0.0), item.get("concept_id") or ""),
+    )[: max(1, weak_limit)]
+
+    topic_scope_ids = scope.get("topic_ids") or []
+    if not topic_scope_ids and concept_to_topics:
+        topic_scope_ids = sorted({tid for tids in concept_to_topics.values() for tid in tids})
+
+    by_topic: list[dict[str, Any]] = []
+    if topic_scope_ids:
+        placeholders = ",".join("?" for _ in topic_scope_ids)
+        topic_rows = query_all(
+            f"""
+            SELECT topicId AS topic_id, topicName AS topic_name, parentTopicId AS parent_topic_id
+            FROM Topic
+            WHERE graphId = ? AND topicId IN ({placeholders})
+            ORDER BY sortOrder ASC, topicId ASC
+            """,
+            (graph_id, *topic_scope_ids),
+        )
+        by_concept_index = {item["concept_id"]: item for item in by_concept}
+        for topic in topic_rows:
+            tid = topic["topic_id"]
+            topic_concept_ids = [
+                cid for cid, tids in concept_to_topics.items() if tid in tids and cid in concept_id_set
+            ]
+            if not topic_concept_ids:
+                continue
+            attempt_total = 0
+            wrong_total = 0
+            accuracy_samples: list[float] = []
+            mastery_samples: list[float] = []
+            weak_count = 0
+            for cid in topic_concept_ids:
+                item = by_concept_index[cid]
+                attempt_total += item["attempt_count"]
+                wrong_total += item["wrong_count"]
+                if item["attempt_count"] > 0:
+                    accuracy_samples.append(item["recent_accuracy"])
+                if cid in mastery_by_concept:
+                    mastery_samples.append(item["mastery_score"])
+                if (item.get("review_score") or 0.0) >= 0.5:
+                    weak_count += 1
+            recent_accuracy = (
+                sum(accuracy_samples) / len(accuracy_samples) if accuracy_samples else None
+            )
+            avg_mastery = sum(mastery_samples) / len(mastery_samples) if mastery_samples else 0.0
+            by_topic.append(
+                {
+                    "topic_id": tid,
+                    "topic_name": topic.get("topic_name"),
+                    "parent_topic_id": topic.get("parent_topic_id"),
+                    "concept_count": len(topic_concept_ids),
+                    "attempt_count": attempt_total,
+                    "wrong_count": wrong_total,
+                    "recent_accuracy": recent_accuracy,
+                    "avg_mastery_score": avg_mastery,
+                    "weak_concept_count": weak_count,
+                }
+            )
+
+    concepts_with_state = len([cid for cid in concept_id_set if cid in mastery_by_concept])
+    avg_mastery_score = sum(mastery_scores) / len(mastery_scores) if mastery_scores else 0.0
+
+    return {
+        "plan_id": plan_id,
+        "graph_id": graph_id,
+        "scope": scope,
+        "summary": {
+            "concepts_in_scope": len(concept_id_set),
+            "concepts_with_state": concepts_with_state,
+            "mastery_distribution": mastery_distribution,
+            "records_by_mode": records_by_mode,
+            "avg_mastery_score": avg_mastery_score,
+        },
+        "by_topic": by_topic,
+        "by_concept": by_concept,
+        "ranked_weak_concepts": ranked_weak,
+    }
+
+
 def get_review_context(plan_id: str, topic_id: str | None = None) -> dict[str, Any]:
     plan = query_one(
         """
@@ -334,53 +711,13 @@ def get_review_context(plan_id: str, topic_id: str | None = None) -> dict[str, A
         if concept.get("concept_id")
     }
 
-    due_items = query_all(
-        """
-        SELECT
-            learningTaskId AS learning_task_id,
-            conceptId AS concept_id,
-            priorityScore AS priority_score,
-            dueAt AS due_at,
-            reasonType AS reason_type
-        FROM LearningTask
-        WHERE learningPlanId = ? AND status = 'pending'
-        ORDER BY priorityScore DESC, dueAt ASC
-        LIMIT 20
-        """,
-        (plan_id,),
-    )
+    due_items = _fetch_due_items(plan_id)
     if scoped_concept_ids:
         due_items = [item for item in due_items if item.get("concept_id") in scoped_concept_ids]
 
-    perf_rows = query_all(
-        """
-        SELECT
-            lr.conceptId AS concept_id,
-            COUNT(*) AS attempt_count,
-            SUM(CASE WHEN LOWER(COALESCE(lr.result, '')) IN ('wrong', 'incorrect', 'fail') THEN 1 ELSE 0 END) AS wrong_count,
-            SUM(CASE WHEN LOWER(COALESCE(lr.result, '')) IN ('correct', 'ok', 'pass') THEN 1 ELSE 0 END) AS correct_count,
-            MAX(lr.occurredAt) AS last_occurred_at
-        FROM LearningRecord lr
-        JOIN LearningSession ls ON ls.sessionId = lr.sessionId
-        WHERE ls.learningPlanId = ?
-        GROUP BY lr.conceptId
-        """,
-        (plan_id,),
-    )
-    perf_by_concept = {row["concept_id"]: row for row in perf_rows if row.get("concept_id")}
-
-    state_rows = query_all(
-        """
-        SELECT
-            conceptId AS concept_id,
-            forgettingRisk AS forgetting_risk,
-            nextReviewAt AS next_review_at
-        FROM LearnerConceptState
-        WHERE learningPlanId = ?
-        """,
-        (plan_id,),
-    )
-    state_by_concept = {row["concept_id"]: row for row in state_rows if row.get("concept_id")}
+    perf_by_concept = _fetch_perf_by_concept(plan_id)
+    state_by_concept = _fetch_review_state_by_concept(plan_id)
+    perf_rows = list(perf_by_concept.values())
 
     now = datetime.now(timezone.utc)
     candidate_ids: set[str] = {item["concept_id"] for item in due_items if item.get("concept_id")}
@@ -411,49 +748,31 @@ def get_review_context(plan_id: str, topic_id: str | None = None) -> dict[str, A
         due_item = due_by_concept.get(concept_id, {})
         state = state_by_concept.get(concept_id, {})
         perf = perf_by_concept.get(concept_id, {})
-
-        due_at = _parse_iso_ts(due_item.get("due_at"))
-        overdue_seconds = max(0.0, (now - due_at).total_seconds()) if due_at else 0.0
-        overdue_score = _clamp01(overdue_seconds / 86400.0)
-        risk_score = _clamp01(float(state.get("forgetting_risk") or 0.0))
-
-        attempt_count = int(perf.get("attempt_count") or 0)
-        wrong_count = int(perf.get("wrong_count") or 0)
-        accuracy = (
-            float(perf.get("correct_count") or 0) / attempt_count
-            if attempt_count > 0
-            else 0.5
-        )
-        weakness_score = _clamp01((wrong_count / max(1, attempt_count)) if attempt_count else 0.5)
-
-        last_occurred = _parse_iso_ts(perf.get("last_occurred_at"))
-        recency_days = max(0.0, (now - last_occurred).total_seconds() / 86400.0) if last_occurred else 3.0
-        recency_gap_score = _clamp01(recency_days / 7.0)
-
-        review_score = _clamp01(
-            0.35 * overdue_score
-            + 0.30 * risk_score
-            + 0.20 * weakness_score
-            + 0.15 * recency_gap_score
+        scores = _compute_concept_review_score(
+            concept_id=concept_id,
+            due_item=due_item,
+            state=state,
+            perf=perf,
+            now=now,
         )
         review_score_factors[concept_id] = {
-            "overdue_score": overdue_score,
-            "forgetting_risk_score": risk_score,
-            "weakness_score": weakness_score,
-            "recency_gap_score": recency_gap_score,
-            "review_score": review_score,
+            "overdue_score": scores["overdue_score"],
+            "forgetting_risk_score": scores["forgetting_risk_score"],
+            "weakness_score": scores["weakness_score"],
+            "recency_gap_score": scores["recency_gap_score"],
+            "review_score": scores["review_score"],
         }
         candidate_items.append(
             {
                 "concept_id": concept_id,
-                "review_score": review_score,
+                "review_score": scores["review_score"],
                 "due_at": due_item.get("due_at"),
                 "priority_score": due_item.get("priority_score"),
                 "reason_type": due_item.get("reason_type"),
                 "forgetting_risk": state.get("forgetting_risk"),
-                "recent_accuracy": accuracy,
-                "attempt_count": attempt_count,
-                "wrong_count": wrong_count,
+                "recent_accuracy": scores["recent_accuracy"],
+                "attempt_count": int(scores["attempt_count"]),
+                "wrong_count": int(scores["wrong_count"]),
             }
         )
 

@@ -37,15 +37,33 @@ def _build_learn_prompt(context: dict[str, Any]) -> str:
 def _build_quiz_prompt(context: dict[str, Any]) -> str:
     scope = context.get("quiz_scope", {})
     perf = context.get("history_performance_summary", [])
-    return (
+    pacing = context.get("quiz_pacing", "per_concept")
+    max_q = (context.get("constraints") or {}).get("max_question_count", 10)
+    suggested = context.get("suggested_batch_size", 1)
+    common = (
         "You are a quiz generator and grader.\n"
         f"Scope: {scope}\n"
         f"Historical performance: {perf}\n"
+        f"Quiz pacing: {pacing} (max_question_count={max_q}, suggested_batch_size={suggested}).\n"
         "Two phases: ask first, evaluate after learner answer.\n"
         "In question phase do not reveal answer, rationale, or verdict.\n"
         "Use retrieval-first: ask before telling, evaluate second, explain third.\n"
         "Progress by SOLO levels: Uni -> Multi -> Relational -> Extended.\n"
-        "Tie each question to one UBD facet and output one question per turn."
+        "Tie each question to one UBD facet.\n"
+        "Each judged answer MUST be persisted with add_interaction_record(mode=quiz) before the next question or mode handoff.\n"
+        "Output record_summary {expected, written, failed} whenever any answer is judged.\n"
+    )
+    if pacing == "per_chapter":
+        return (
+            common
+            + "per_chapter: emit a numbered item list (item_id, concept_id, question text) up to suggested_batch_size.\n"
+            + "After answers, judge in order and write one record per item; written must equal expected before handoff.\n"
+            + "Complex concepts may have 2-3 items; simple concepts 1 item; total items <= max_question_count.\n"
+        )
+    return (
+        common
+        + "per_concept: one anchor concept_id per turn; default one question; up to 3 for complex concepts.\n"
+        + "Write a record after each judged answer before the next question on the same turn.\n"
     )
 
 

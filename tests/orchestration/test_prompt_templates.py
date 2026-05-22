@@ -25,18 +25,34 @@ def test_build_learn_prompt_contains_goal_and_concept_focus():
     assert "Scope" in prompt
 
 
-def test_build_quiz_prompt_contains_scope_and_history():
+def test_build_quiz_prompt_per_concept_pacing():
     context = {
         "quiz_scope": {"topic_ids": ["t1"]},
         "history_performance_summary": [{"record_type": "quiz", "avg_score": 82}],
+        "quiz_pacing": "per_concept",
+        "suggested_batch_size": 1,
+        "constraints": {"max_question_count": 10},
     }
     prompt = build_prompt("quiz", context)
     assert "quiz generator and grader" in prompt
-    assert "topic_ids" in prompt
-    assert "avg_score" in prompt
-    assert "retrieval-first" in prompt
-    assert "SOLO levels" in prompt
-    assert "UBD facet" in prompt
+    assert "per_concept" in prompt
+    assert "one anchor concept_id" in prompt
+    assert "add_interaction_record" in prompt
+    assert "record_summary" in prompt
+
+
+def test_build_quiz_prompt_per_chapter_pacing():
+    context = {
+        "quiz_scope": {"topic_ids": ["t1"]},
+        "history_performance_summary": [],
+        "quiz_pacing": "per_chapter",
+        "suggested_batch_size": 5,
+        "constraints": {"max_question_count": 10},
+    }
+    prompt = build_prompt("quiz", context)
+    assert "per_chapter" in prompt
+    assert "numbered item list" in prompt
+    assert "written must equal expected" in prompt
 
 
 def test_build_review_prompt_contains_due_items_and_risk():

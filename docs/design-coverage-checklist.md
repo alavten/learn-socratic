@@ -29,6 +29,8 @@
 - [x] Learning APIs: list/create/extend/get_learning_context/get_quiz_context/get_review_context/add_interaction_record.
 - [x] Prompt APIs: `get_learn_context`, `get_quiz_context`, `get_review_context`.
 - [x] End-to-end flows tested: ingest -> learn -> quiz -> review -> mode switch.
+- [x] Quiz dual pacing (`per_concept` / `per_chapter`) in `references/quiz.md` with Reconcile and `record_summary`.
+- [x] `get_quiz_context` accepts optional `session_context` and returns `next_session_context`.
 
 ## Quality and Verification
 

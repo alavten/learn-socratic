@@ -436,13 +436,34 @@ API_SPECS: dict[str, dict[str, Any]] = {
             "properties": {
                 "plan_id": {"type": "string", "minLength": 1},
                 "topic_id": {"type": "string"},
+                "session_context": {
+                    "type": "object",
+                    "description": (
+                        "Optional quiz session state: quiz_pacing (per_concept|per_chapter), "
+                        "batch_size, pending_items, served_concept_ids"
+                    ),
+                },
             },
             "additionalProperties": False,
         },
         "summary": "Build quiz prompt from context",
         "tags": ["learning", "prompt"],
         "stability": "stable",
-        "examples": {"valid_payloads": [{"plan_id": "plan-1"}, {"plan_id": "plan-1", "topic_id": "t1"}]},
+        "examples": {
+            "valid_payloads": [
+                {"plan_id": "plan-1"},
+                {"plan_id": "plan-1", "topic_id": "t1"},
+                {
+                    "plan_id": "plan-1",
+                    "topic_id": "t1",
+                    "session_context": {
+                        "quiz_pacing": "per_chapter",
+                        "batch_size": 5,
+                        "pending_items": [{"item_id": 1, "concept_id": "c1", "judged": False}],
+                    },
+                },
+            ]
+        },
     },
     "get_review_context": {
         "input_schema": {
@@ -469,6 +490,29 @@ API_SPECS: dict[str, dict[str, Any]] = {
                     "topic_id": "t1",
                     "session_context": {"served_concept_ids": ["c1"], "last_result": "correct"},
                 },
+            ]
+        },
+    },
+    "get_mastery_diagnostics": {
+        "input_schema": {
+            "type": "object",
+            "required": ["plan_id"],
+            "properties": {
+                "plan_id": {"type": "string", "minLength": 1},
+                "topic_id": {"type": "string", "description": "Optional topic/chapter anchor (mutually exclusive with concept_id)"},
+                "concept_id": {"type": "string", "description": "Optional concept anchor; expands part_of descendants"},
+                "weak_limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+            },
+            "additionalProperties": False,
+        },
+        "summary": "Mastery and weak-point diagnostics for a learning plan",
+        "tags": ["learning", "read"],
+        "stability": "stable",
+        "examples": {
+            "valid_payloads": [
+                {"plan_id": "plan-1"},
+                {"plan_id": "plan-1", "topic_id": "t1"},
+                {"plan_id": "plan-1", "concept_id": "c1", "weak_limit": 10},
             ]
         },
     },
@@ -601,6 +645,54 @@ def _compact_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _is_incorrect_result(result: Any) -> bool:
     return str(result or "").lower() in {"wrong", "incorrect", "fail", "blocked"}
+
+
+QUIZ_PACINGS = frozenset({"per_concept", "per_chapter"})
+
+
+def _prepare_quiz_session_state(
+    context: dict[str, Any],
+    session_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    incoming = dict(session_context or {})
+    constraints = context.get("constraints") or {}
+    max_question_count = int(constraints.get("max_question_count") or 10)
+    pacing = str(incoming.get("quiz_pacing") or "per_concept").strip()
+    if pacing not in QUIZ_PACINGS:
+        pacing = "per_concept"
+
+    concept_pack = (context.get("detail") or {}).get("concept_pack_brief") or {}
+    concepts = concept_pack.get("concepts") or []
+    concept_count = len(concepts)
+
+    raw_batch = incoming.get("batch_size")
+    if raw_batch is not None:
+        try:
+            suggested_batch_size = max(1, min(int(raw_batch), max_question_count))
+        except (TypeError, ValueError):
+            suggested_batch_size = 1
+    elif pacing == "per_chapter":
+        suggested_batch_size = min(max(concept_count, 1), max_question_count) if concept_count else min(5, max_question_count)
+    else:
+        suggested_batch_size = 1
+
+    pending_items = list(incoming.get("pending_items") or [])
+    served_concept_ids = list(incoming.get("served_concept_ids") or [])
+
+    next_session_context = {
+        "quiz_pacing": pacing,
+        "batch_size": suggested_batch_size,
+        "pending_items": pending_items,
+        "served_concept_ids": served_concept_ids,
+    }
+
+    return {
+        "quiz_pacing": pacing,
+        "suggested_batch_size": suggested_batch_size,
+        "pending_items": pending_items,
+        "served_concept_ids": served_concept_ids,
+        "next_session_context": next_session_context,
+    }
 
 
 def _prepare_review_session_state(
@@ -925,9 +1017,25 @@ class OrchestrationAppService:
         context = learning_api.get_learning_context(plan_id=plan_id, topic_id=topic_id)
         return {"prompt_text": build_prompt("learn", context), "context_summary": context}
 
-    def get_quiz_context(self, plan_id: str, topic_id: str | None = None) -> dict[str, Any]:
-        _validate_payload("get_quiz_context", _compact_payload({"plan_id": plan_id, "topic_id": topic_id}))
+    def get_quiz_context(
+        self,
+        plan_id: str,
+        topic_id: str | None = None,
+        session_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        _validate_payload(
+            "get_quiz_context",
+            _compact_payload(
+                {
+                    "plan_id": plan_id,
+                    "topic_id": topic_id,
+                    "session_context": session_context,
+                }
+            ),
+        )
         context = learning_api.get_quiz_context(plan_id=plan_id, topic_id=topic_id)
+        session_state = _prepare_quiz_session_state(context, session_context)
+        context = {**context, **session_state}
         return {"prompt_text": build_prompt("quiz", context), "context_summary": context}
 
     def get_review_context(
@@ -959,6 +1067,31 @@ class OrchestrationAppService:
             "next_session_context": session_state["next_session_context"],
         }
         return {"prompt_text": build_prompt("review", context), "context_summary": context}
+
+    def get_mastery_diagnostics(
+        self,
+        plan_id: str,
+        topic_id: str | None = None,
+        concept_id: str | None = None,
+        weak_limit: int = 20,
+    ) -> dict[str, Any]:
+        _validate_payload(
+            "get_mastery_diagnostics",
+            _compact_payload(
+                {
+                    "plan_id": plan_id,
+                    "topic_id": topic_id,
+                    "concept_id": concept_id,
+                    "weak_limit": weak_limit,
+                }
+            ),
+        )
+        return learning_api.get_mastery_diagnostics(
+            plan_id=plan_id,
+            topic_id=topic_id,
+            concept_id=concept_id,
+            weak_limit=weak_limit,
+        )
 
     def add_interaction_record(self, plan_id: str, mode: str, record_payload: dict[str, Any]) -> dict[str, Any]:
         _validate_payload(

@@ -159,6 +159,21 @@ def test_cli_end_to_end_ingest_plan_prompt_record(isolated_db, tmp_path):
     if current:
         assert current["concept_id"] != "c1"
 
+    diag = _run_cli(
+        [
+            "get-mastery-diagnostics",
+            "--plan-id",
+            plan_id,
+            "--topic-id",
+            "t1",
+        ]
+    )
+    assert diag["scope"]["kind"] == "topic"
+    assert "by_concept" in diag
+    assert "ranked_weak_concepts" in diag
+    assert diag["summary"]["records_by_mode"]["learn"] >= 1
+    assert any(item["concept_id"] == "c1" for item in diag["by_concept"])
+
 
 def test_cli_add_interaction_record_unknown_concept_stderr_json(isolated_db, tmp_path):
     payload = sample_graph_payload()
@@ -194,6 +209,7 @@ def test_cli_api_discovery_commands(isolated_db):
     assert "get_learn_context" in names
     assert "ingest_knowledge_graph" in names
     assert "remove_knowledge_graph_entities" in names
+    assert "get_mastery_diagnostics" in names
 
     spec = _run_cli(["get-api-spec", "--api-name", "add_interaction_record"])
     assert spec["name"] == "add_interaction_record"

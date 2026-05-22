@@ -181,6 +181,8 @@ sequenceDiagram
 
 ### 3.3 测验业务流程（时序）
 
+测验支持两种节奏（`quiz_pacing`）：`per_concept`（逐概念，默认每 turn 1 个 anchor 概念）与 `per_chapter`（按章节 scope 一轮多题）。**落库粒度不变**：每道已判定题各调用一次 `add_interaction_record(mode=quiz)`；`per_chapter` 在 turn 结束前核对 `record_summary.written == expected`。记录补写须回到 `quiz`/`learn`/`review`，不在 `shared` 批量写入。
+
 ```mermaid
 sequenceDiagram
   actor User as 学习者
@@ -191,7 +193,7 @@ sequenceDiagram
   participant Learning as 学习域服务
 
   User->>Agent: 发起测验
-  Agent->>Orchestrator: get_quiz_context(plan_id, topic_id)
+  Agent->>Orchestrator: get_quiz_context(plan_id, topic_id, session_context)
   Orchestrator->>Learning: get_quiz_context(plan_id, topic_id)
   Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
   Learning->>KG: get_concept_relations(graph_id, concept_scope, depth=1)
@@ -269,7 +271,7 @@ sequenceDiagram
       Agent->>Orchestrator: get_learn_context(plan_id, topic_id)
       Orchestrator->>Learning: get_learning_context(plan_id, topic_id)
     else target_mode = quiz
-      Agent->>Orchestrator: get_quiz_context(plan_id, topic_id)
+      Agent->>Orchestrator: get_quiz_context(plan_id, topic_id, session_context)
       Orchestrator->>Learning: get_quiz_context(plan_id, topic_id)
     else target_mode = review
       Agent->>Orchestrator: get_review_context(plan_id, topic_id)
@@ -388,7 +390,7 @@ doc-socratic-learning-optimized/
     - 退出条件：必须在一次澄清后返回明确模式，避免常驻在 shared 流程
     - 若长期高频触发 shared，优先把稳定规则上移到 `SKILL.md` 或下沉到具体模式文档
   - **`learn.md`**：学习模式工作流（选择目标 -> 获取学习回合上下文 -> 讲解与追问 -> 提交回合结果 -> 输出下一步）。
-  - **`quiz.md`**：测验模式工作流（确定测验范围 -> 出题与作答 -> 判分与讲评 -> 提交回合结果 -> 给出补强建议）。
+  - **`quiz.md`**：测验模式工作流（Reconcile -> 确定范围与 `quiz_pacing` -> 出题与作答 -> 逐题判分写记录 -> `record_summary` 对账 -> 给出补强建议）。
   - **`review.md`**：复习模式工作流（读取复习任务/到期项 -> 复述或抽问 -> 记录结果 -> 更新复习队列 -> 推荐下一轮）。
   - **文档结构建议（统一模板）**：`触发条件`、`输入`、`步骤`、`输出`、`失败重试/降级`、`下一步跳转`。其中“输出”允许各模式自定义 payload。
 
@@ -446,7 +448,7 @@ sequenceDiagram
   7. `create_learning_plan(graph_id, topic_id=None)`：基于选定图谱创建学习计划并返回 `plan_id`；可选 `topic_id` 用于限定初始学习范围。
   8. `extend_learning_plan_topics(plan_id, topic_ids, reason=None)`：按学习进展向既有计划增量加入主题范围，返回新增结果与范围摘要。
   9. `get_learn_context(plan_id, topic_id=None)`：内部调用 `learning.get_learning_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回学习提示词文本；可选 `topic_id` 用于聚焦当前学习主题。
-  10. `get_quiz_context(plan_id, topic_id=None)`：内部调用 `learning.get_quiz_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回测验提示词文本；可选 `topic_id` 用于限定测验主题范围。
+  10. `get_quiz_context(plan_id, topic_id=None, session_context=None)`：内部调用 `learning.get_quiz_context(...)` 拉取结构化上下文，合并 `quiz_pacing`/`next_session_context` 后经 `prompt_templates` 封装返回测验提示词；可选 `topic_id` 限定范围，可选 `session_context` 续跑批量测验。
   11. `get_review_context(plan_id, topic_id=None, session_context=None)`：内部调用 `learning.get_review_context(...)` 拉取结构化上下文，结合 `session_context` 计算 `session_queue`（当前题/下一题/已服务概念），并经 `prompt_templates` 封装后返回复习提示词文本。
   12. `add_interaction_record(plan_id, mode, record_payload)`：写入学习记录并返回提交结果。
 - **边界**：
@@ -509,8 +511,9 @@ sequenceDiagram
   - 默认返回：`goal_summary`、`state_summary`、`task_summary`、`concept_scope`、`concept_pack_brief`。
   - 按需扩展：`detail.concept_pack`（更完整 Concept 信息）。
   - 不建议返回：Evidence full（默认不返回）。
-  5. `get_quiz_context(plan_id, topic_id=None)`
-  - 默认返回：`quiz_scope`、`history_performance_summary`、`difficulty_hint`、`constraints`。
+  5. `get_quiz_context(plan_id, topic_id=None, session_context=None)`
+  - 默认返回：`quiz_scope`、`history_performance_summary`、`difficulty_hint`、`constraints`、`quiz_pacing`、`suggested_batch_size`、`next_session_context`。
+  - 入参 `session_context`：`quiz_pacing`、`batch_size`、`pending_items`、`served_concept_ids`。
   - 按需扩展：`detail.concept_pack_brief`（仅出题必要概念材料）。
   - 不建议返回：与出题无关的长文本上下文。
   6. `get_review_context(plan_id, topic_id=None)`

@@ -41,6 +41,15 @@ class FakeService:
         )
         return {"ok": True}
 
+    def get_quiz_context(self, plan_id, topic_id=None, session_context=None):
+        self.calls.append(
+            (
+                "get_quiz_context",
+                {"plan_id": plan_id, "topic_id": topic_id, "session_context": session_context},
+            )
+        )
+        return {"ok": True}
+
     def get_review_context(self, plan_id, topic_id=None, session_context=None):
         self.calls.append(
             (
@@ -186,6 +195,35 @@ def test_cli_ingest_reads_payload_file(monkeypatch, tmp_path):
     assert service.calls[0][1]["graph_id"] == "g1"
     assert service.calls[0][1]["structured_payload"]["graph"]["graph_name"] == "x"
     assert outputs == [{"ok": True}]
+
+
+def test_cli_quiz_prompt_supports_session_context_json(monkeypatch):
+    service = FakeService()
+    outputs = []
+    monkeypatch.setattr(cli, "create_app", lambda: service)
+    monkeypatch.setattr(cli, "_print_json", lambda p: outputs.append(p))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli.py",
+            "get-mode-context",
+            "--mode",
+            "quiz",
+            "--plan-id",
+            "p1",
+            "--topic-id",
+            "t1",
+            "--session-context-json",
+            '{"quiz_pacing":"per_chapter","batch_size":3}',
+        ],
+    )
+
+    cli.main()
+
+    assert outputs == [{"ok": True}]
+    assert service.calls[0][0] == "get_quiz_context"
+    assert service.calls[0][1]["session_context"]["quiz_pacing"] == "per_chapter"
+    assert service.calls[0][1]["session_context"]["batch_size"] == 3
 
 
 def test_cli_review_prompt_supports_session_context_json(monkeypatch):

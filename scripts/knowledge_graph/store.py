@@ -200,6 +200,41 @@ def collect_topic_ids_with_descendants(graph_id: str, root_topic_ids: list[str])
     return list(collected)
 
 
+def collect_concept_ids_with_descendants(graph_id: str, root_concept_ids: list[str]) -> list[str]:
+    """Return root concept ids plus all descendant concepts under part_of edges.
+
+    Semantics: ``fromConceptId part_of toConceptId`` means *from* is a sub-concept of *to*.
+    Descendants of an anchor are the anchor plus every child reachable following
+    parent -> child links (all ``from`` nodes whose ``to`` is the current node).
+    """
+    if not root_concept_ids:
+        return []
+    rows = query_all(
+        """
+        SELECT fromConceptId AS from_concept_id, toConceptId AS to_concept_id
+        FROM ConceptRelation
+        WHERE graphId = ? AND dr = 0 AND relationType = 'part_of'
+        """,
+        (graph_id,),
+    )
+    children_by_parent: dict[str, list[str]] = {}
+    for row in rows:
+        parent_id = row["to_concept_id"]
+        child_id = row["from_concept_id"]
+        if parent_id and child_id:
+            children_by_parent.setdefault(parent_id, []).append(child_id)
+    collected: set[str] = set()
+    stack = [cid for cid in root_concept_ids if cid]
+    while stack:
+        concept_id = stack.pop()
+        if concept_id in collected:
+            continue
+        collected.add(concept_id)
+        for child_id in children_by_parent.get(concept_id, []):
+            stack.append(child_id)
+    return list(collected)
+
+
 def list_concept_ids_for_prune_scope(
     graph_id: str,
     topic_ids: list[str] | None,
