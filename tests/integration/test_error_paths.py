@@ -53,7 +53,7 @@ def test_call_api_missing_required_field_raises_value_error(isolated_db):
     service.ingest_knowledge_graph("g1", sample_graph_payload())
 
     with pytest.raises(ValueError):
-        call_api(service, "create_learning_plan", {})
+        call_api(service, "create-learning-plan", {})
 
 
 def test_add_interaction_record_invalid_mode_raises_value_error(isolated_db):

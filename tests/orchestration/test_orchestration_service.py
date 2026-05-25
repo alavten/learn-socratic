@@ -1,3 +1,5 @@
+import pytest
+
 from scripts.knowledge_graph.api import ingest_knowledge_graph
 from scripts.orchestration.orchestration_app_service import OrchestrationAppService
 from tests.helpers import sample_graph_payload
@@ -7,18 +9,25 @@ def test_api_self_description(isolated_db):
     service = OrchestrationAppService()
     apis = service.list_apis()
     names = [item["name"] for item in apis]
-    assert "get_api_spec" in names
-    spec = service.get_api_spec("create_learning_plan")
+    assert "get-api-spec" in names
+    spec = service.get_api_spec("create-learning-plan")
+    assert spec["name"] == "create-learning-plan"
     assert "required" in spec["input_schema"]
     assert "valid_payloads" in spec["examples"]
-    get_graph_spec = service.get_api_spec("get_knowledge_graph")
+    get_graph_spec = service.get_api_spec("get-knowledge-graph")
     assert "output_schema" in get_graph_spec
     assert "concept_briefs" in get_graph_spec["output_schema"]["properties"]
-    discovery_spec = service.get_api_spec("get_discovery_context")
-    assert discovery_spec["name"] == "get_discovery_context"
-    assert "get_mastery_diagnostics" in names
-    diag_spec = service.get_api_spec("get_mastery_diagnostics")
+    discovery_spec = service.get_api_spec("get-discovery-context")
+    assert discovery_spec["name"] == "get-discovery-context"
+    assert "get-mastery-diagnostics" in names
+    diag_spec = service.get_api_spec("get-mastery-diagnostics")
     assert "plan_id" in diag_spec["input_schema"]["required"]
+
+
+def test_get_api_spec_rejects_snake_case_with_hint(isolated_db):
+    service = OrchestrationAppService()
+    with pytest.raises(ValueError, match="unknown_api: create_learning_plan"):
+        service.get_api_spec("create_learning_plan")
 
 
 def test_prompt_generation_and_record_commit(isolated_db):
@@ -52,7 +61,7 @@ def test_get_mastery_diagnostics_orchestration(isolated_db):
 def test_remove_knowledge_graph_entities_api_listed(isolated_db):
     service = OrchestrationAppService()
     names = {a["name"] for a in service.list_apis()}
-    assert "remove_knowledge_graph_entities" in names
+    assert "remove-knowledge-graph-entities" in names
 
 
 def test_ingest_with_prune_scope_optional(isolated_db):

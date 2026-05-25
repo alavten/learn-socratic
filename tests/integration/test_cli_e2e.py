@@ -206,11 +206,11 @@ def test_cli_add_interaction_record_unknown_concept_stderr_json(isolated_db, tmp
 def test_cli_api_discovery_commands(isolated_db):
     listed = _run_cli(["list-apis"])
     names = {api["name"] for api in listed}
-    assert "get_learn_context" in names
-    assert "ingest_knowledge_graph" in names
-    assert "remove_knowledge_graph_entities" in names
-    assert "get_mastery_diagnostics" in names
+    assert "get-learn-context" in names
+    assert "ingest-knowledge-graph" in names
+    assert "remove-knowledge-graph-entities" in names
+    assert "get-mastery-diagnostics" in names
 
-    spec = _run_cli(["get-api-spec", "--api-name", "add_interaction_record"])
-    assert spec["name"] == "add_interaction_record"
+    spec = _run_cli(["get-api-spec", "--api-name", "add-interaction-record"])
+    assert spec["name"] == "add-interaction-record"
     assert "required" in spec["input_schema"]

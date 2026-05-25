@@ -26,7 +26,7 @@ Pass `quiz_pacing` and optional `batch_size` in `session_context` when calling `
 
 ## Runtime Execution Chain
 
-1. Preflight (once per session): `get_api_spec("get_quiz_context")`.
+1. Preflight (once per session): `get_api_spec("get-quiz-context")`.
 2. If `plan_id` is missing, route to `shared` for discovery tables and selection first.
 3. **Reconcile** before a new quiz round: if the prior turn judged any answer but `add_interaction_record` did not succeed for that item, flush pending records now. Do not emit new questions until pending writes succeed or recovery is surfaced per Retry / Fallback.
 4. Fetch quiz context:

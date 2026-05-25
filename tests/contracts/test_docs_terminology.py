@@ -17,7 +17,8 @@ def test_readme_mentions_all_four_modes():
 def test_architecture_mentions_ingest_route_and_naming_convention():
     content = _read("docs/architecture-design.md")
     assert "ingest/learn/quiz/review" in content
-    assert "运行时 API 与模式文档优先使用 `snake_case`" in content
+    assert "API 发现层 `name`" in content
+    assert "kebab-case" in content
 
 
 def test_coverage_checklist_includes_terminology_rules():

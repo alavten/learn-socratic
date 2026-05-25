@@ -1,6 +1,10 @@
 import inspect
 
-from scripts.orchestration.orchestration_app_service import API_SPECS, OrchestrationAppService
+from scripts.orchestration.orchestration_app_service import (
+    API_SPECS,
+    OrchestrationAppService,
+    api_name_to_kebab,
+)
 
 
 def test_list_apis_and_specs_are_consistent(isolated_db):
@@ -8,11 +12,12 @@ def test_list_apis_and_specs_are_consistent(isolated_db):
     listed = service.list_apis()
     listed_names = {item["name"] for item in listed}
     spec_names = set(API_SPECS.keys())
-    assert listed_names == spec_names
+    assert listed_names == {api_name_to_kebab(name) for name in spec_names}
 
     for name in spec_names:
-        spec = service.get_api_spec(name)
-        assert spec["name"] == name
+        external = api_name_to_kebab(name)
+        spec = service.get_api_spec(external)
+        assert spec["name"] == external
         assert "input_schema" in spec
 
 

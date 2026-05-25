@@ -81,7 +81,7 @@ When the user wants diagnostics (not a live review/quiz session):
 
 ### Long-tail API or tooling question
 
-If the user asks for a small operation not covered by the main modes, run `list_apis()` + `get_api_spec()` once, then recommend 1 next hop and ask for confirmation.
+If the user asks for a small operation not covered by the main modes, run `list_apis()` + `get_api_spec()` once (API `name` values are kebab-case, same as `list-apis` output), then recommend 1 next hop and ask for confirmation.
 
 ## Output (minimal)
 

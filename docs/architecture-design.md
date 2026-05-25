@@ -51,7 +51,7 @@
 命名约定说明：
 
 - 数据模型文档中的实体属性沿用其规范命名（包含既有 camelCase 字段）。
-- 运行时 API 与模式文档优先使用 `snake_case` 作为外部调用字段命名。
+- API 发现层 `name`（`list-apis` / `get-api-spec`）使用 **kebab-case**；JSON 载荷与模式文档字段仍使用 **snake_case**（`graph_id`、`plan_id` 等）。
 
 ```mermaid
 erDiagram

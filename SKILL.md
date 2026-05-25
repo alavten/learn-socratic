@@ -82,10 +82,17 @@ Examples:
 
 Run commands from the skill repo root (the directory that contains `scripts/`), e.g. `cd …/learn-socratic && python -m scripts.cli.main …`.
 
+**Naming**
+
+| Surface | Style | Example |
+| ------- | ----- | ------- |
+| CLI subcommands, flags, API discovery `name` (`list-apis`, `get-api-spec --api-name`) | kebab-case | `create-learning-plan`, `--plan-id` |
+| JSON request/response fields in API payloads | snake_case | `graph_id`, `plan_id`, `concept_id` |
+
 **Discovery (authoritative)**
 
-1. **`list-apis`** — JSON list of orchestration API `name` values (snake_case), same as `OrchestrationAppService.list_apis()`.
-2. **`get-api-spec --api-name <snake_case>`** — input JSON Schema for that API (e.g. `get_knowledge_graph`).
+1. **`list-apis`** — JSON list of orchestration API `name` values (kebab-case), aligned with CLI subcommands where a dedicated command exists.
+2. **`get-api-spec --api-name <kebab-case>`** — input JSON Schema; value must be a `name` from **`list-apis`** (e.g. `create-learning-plan`). Snake_case names (e.g. `create_learning_plan`) are rejected.
 3. **`list-knowledge-graphs`** — lists stored graph metadata; use this to obtain valid **`graph_id`** values. It does **not** enumerate shell subcommands (do not confuse with `list-apis`).
 
 **Allowed CLI subcommands only** (must match `scripts/cli/main.py`; do not invent names such as `get-concepts`):

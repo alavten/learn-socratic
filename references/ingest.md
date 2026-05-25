@@ -9,7 +9,7 @@ Required context: `graph_id`, `payload_file` (`structured_payload` JSON object o
 
 ## Runtime Execution Chain
 
-1. Preflight (once per session): `get_api_spec("ingest_knowledge_graph")`.
+1. Preflight (once per session): `get_api_spec("ingest-knowledge-graph")`.
 2. Validate payload format and required fields before write.
 3. Execute ingestion:
    - `ingest_knowledge_graph(graph_id, structured_payload)`

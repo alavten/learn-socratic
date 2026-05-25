@@ -9,7 +9,7 @@ class FakeService:
 
     def list_apis(self):
         self.calls.append(("list_apis", {}))
-        return [{"name": "list_apis"}]
+        return [{"name": "list-apis"}]
 
     def extend_learning_plan_topics(self, plan_id, topic_ids, reason=None):
         self.calls.append(
@@ -70,7 +70,7 @@ def test_cli_list_apis(monkeypatch):
 
     cli.main()
 
-    assert outputs == [[{"name": "list_apis"}]]
+    assert outputs == [[{"name": "list-apis"}]]
     assert service.calls == [("list_apis", {})]
 
 

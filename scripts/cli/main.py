@@ -28,7 +28,11 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("list-apis", help="List available APIs")
 
     get_api_spec = sub.add_parser("get-api-spec", help="Get API input schema")
-    get_api_spec.add_argument("--api-name", required=True)
+    get_api_spec.add_argument(
+        "--api-name",
+        required=True,
+        help="Orchestration API name in kebab-case from list-apis (e.g. create-learning-plan)",
+    )
 
     list_graphs = sub.add_parser("list-knowledge-graphs", help="List knowledge graphs")
     list_graphs.add_argument("--limit", type=int, default=20)
@@ -265,6 +269,15 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+    except ValueError as exc:
+        message = str(exc)
+        if message.startswith("unknown_api:"):
+            print(
+                json.dumps({"error_code": "unknown_api", "message": message}, ensure_ascii=False),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        raise
 
 
 if __name__ == "__main__":

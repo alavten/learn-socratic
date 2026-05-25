@@ -8,7 +8,7 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 ## Runtime Execution Chain
 
-1. Preflight (once per session): `get_api_spec("get_learn_context")`.
+1. Preflight (once per session): `get_api_spec("get-learn-context")`.
 2. If `plan_id` is missing, route to `shared` for discovery tables and selection first.
 3. If the user names a chapter/section but `topic_id` is missing, resolve it from the plan's graph via `get_knowledge_graph(graph_id)` and match against `topics` before fetching context.
 4. Fetch learn prompt context after explicit user selection:

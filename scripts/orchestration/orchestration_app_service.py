@@ -809,6 +809,22 @@ def _build_discovery_tables(
     }
 
 
+def api_name_to_kebab(internal_name: str) -> str:
+    """Map internal API_SPECS key (snake_case) to external kebab-case name."""
+    return internal_name.replace("_", "-")
+
+
+def resolve_api_name(external_name: str) -> str:
+    """Map external kebab API name to internal API_SPECS key (snake_case)."""
+    key = external_name.strip()
+    if key in API_SPECS:
+        raise ValueError(f"unknown_api: {key} (use kebab-case, e.g. {api_name_to_kebab(key)})")
+    internal = key.replace("-", "_")
+    if internal not in API_SPECS:
+        raise ValueError(f"unknown_api: {key}")
+    return internal
+
+
 class OrchestrationAppService:
     def __init__(self) -> None:
         # Ensure schema exists even when callers bypass create_app().
@@ -817,7 +833,7 @@ class OrchestrationAppService:
     def list_apis(self) -> list[dict[str, Any]]:
         return [
             {
-                "name": name,
+                "name": api_name_to_kebab(name),
                 "version": "v1",
                 "summary": spec["summary"],
                 "tags": spec["tags"],
@@ -827,11 +843,10 @@ class OrchestrationAppService:
         ]
 
     def get_api_spec(self, api_name: str) -> dict[str, Any]:
-        if api_name not in API_SPECS:
-            raise ValueError(f"unknown_api: {api_name}")
-        spec = API_SPECS[api_name]
+        internal = resolve_api_name(api_name)
+        spec = API_SPECS[internal]
         return {
-            "name": api_name,
+            "name": api_name_to_kebab(internal),
             "input_schema": spec["input_schema"],
             "output_schema": spec.get("output_schema", {}),
             "examples": spec.get("examples", {}),
@@ -1102,17 +1117,21 @@ class OrchestrationAppService:
 
 
 def call_api(service: OrchestrationAppService, api_name: str, payload: dict[str, Any]) -> Any:
-    if api_name not in API_SPECS:
-        raise ValueError(f"unknown_api: {api_name}")
+    external_name = api_name.strip()
+    internal_name = resolve_api_name(external_name)
+    external_kebab = api_name_to_kebab(internal_name)
     try:
-        _validate_payload(api_name, payload)
-        handler: Callable[..., Any] = getattr(service, api_name)
+        _validate_payload(internal_name, payload)
+        handler: Callable[..., Any] = getattr(service, internal_name)
         return handler(**payload)
+    except PayloadValidationError as exc:
+        details = {**exc.details, "api_name": external_kebab}
+        raise PayloadValidationError(details) from exc
     except TypeError as exc:
         err = PayloadValidationError(
             {
                 "error_code": "invalid_payload_signature",
-                "api_name": api_name,
+                "api_name": external_kebab,
                 "field_path": "$",
                 "expected": "payload keys must match API signature",
                 "received": sorted(payload.keys()),
@@ -1122,7 +1141,7 @@ def call_api(service: OrchestrationAppService, api_name: str, payload: dict[str,
         log_event(
             logger,
             "api_payload_validation_failed",
-            api_name=api_name,
+            api_name=external_kebab,
             validation_failed=True,
             error_code=err.details["error_code"],
             field_path=err.details["field_path"],

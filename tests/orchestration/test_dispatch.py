@@ -16,7 +16,7 @@ def test_call_api_unknown_name_raises():
 def test_call_api_dispatches_to_bound_method(monkeypatch):
     service = OrchestrationAppService()
     monkeypatch.setattr(service, "list_apis", lambda: [{"name": "patched"}])
-    result = call_api(service, "list_apis", {})
+    result = call_api(service, "list-apis", {})
     assert result == [{"name": "patched"}]
 
 
@@ -29,13 +29,13 @@ def test_get_api_spec_unknown_raises():
 @pytest.mark.parametrize(
     ("api_name", "payload", "field_path", "error_code"),
     [
-        ("create_learning_plan", {}, "$", "invalid_payload_schema"),
-        ("create_learning_plan", {"graph_id": "g1", "extra": True}, "$", "invalid_payload_schema"),
-        ("add_interaction_record", {"plan_id": "p1", "mode": "bad", "record_payload": {"concept_id": "c1"}}, "$.mode", "invalid_payload_schema"),
-        ("add_interaction_record", {"plan_id": "p1", "mode": "learn", "record_payload": {"concept_id": "c1", "latency_ms": -1}}, "$.record_payload.latency_ms", "invalid_payload_schema"),
-        ("remove_knowledge_graph_entities", {"graph_id": "g1", "remove_payload": {"concept_ids": "c1"}}, "$.remove_payload.concept_ids", "invalid_payload_schema"),
+        ("create-learning-plan", {}, "$", "invalid_payload_schema"),
+        ("create-learning-plan", {"graph_id": "g1", "extra": True}, "$", "invalid_payload_schema"),
+        ("add-interaction-record", {"plan_id": "p1", "mode": "bad", "record_payload": {"concept_id": "c1"}}, "$.mode", "invalid_payload_schema"),
+        ("add-interaction-record", {"plan_id": "p1", "mode": "learn", "record_payload": {"concept_id": "c1", "latency_ms": -1}}, "$.record_payload.latency_ms", "invalid_payload_schema"),
+        ("remove-knowledge-graph-entities", {"graph_id": "g1", "remove_payload": {"concept_ids": "c1"}}, "$.remove_payload.concept_ids", "invalid_payload_schema"),
         (
-            "ingest_knowledge_graph",
+            "ingest-knowledge-graph",
             {
                 "graph_id": "g1",
                 "structured_payload": {

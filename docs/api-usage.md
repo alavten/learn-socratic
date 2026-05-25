@@ -48,8 +48,9 @@ python -m scripts.cli.main list-apis
 
 ### CLI 与子命令
 
-- **编排 API 名称**（snake_case）以 `list_apis()` / CLI `list-apis` 返回的 `name` 为准，与 [`orchestration_app_service` 的 `API_SPECS`](architecture-design.md) 一致。
-- **入参 JSON Schema**：CLI `get-api-spec --api-name <snake_case>`（等价于 `get_api_spec(api_name)`）。
+- **编排 API 名称**（kebab-case）以 `list_apis()` / CLI `list-apis` 返回的 `name` 为准（如 `create-learning-plan`）；Python 内部 `API_SPECS` 键仍为 snake_case，由编排层自动转换。
+- **JSON 载荷字段**仍为 snake_case（`graph_id`、`plan_id` 等），与 API `name` 命名无关。
+- **入参 JSON Schema**：CLI `get-api-spec --api-name <kebab-case>`（等价于 `get_api_spec(api_name)`）；勿使用 snake_case API 名。
 - **`graph_id` 取值**：CLI `list-knowledge-graphs` 列出库中图谱元数据（`items` 等），用于填写各命令的 `--graph-id`。**不要**把「列出图谱」误当成「列出允许执行的子命令」；子命令白名单见下。
 - **允许的 CLI 子命令（仅此列表，与 `scripts/cli/main.py` 一致）**：`list-apis`、`get-api-spec`、`list-knowledge-graphs`、`get-knowledge-graph`、`ingest-knowledge-graph`、`remove-knowledge-graph-entities`、`list-learning-plans`、`create-learning-plan`、`extend-learning-plan-topics`、`get-mode-context`、`get-mastery-diagnostics`、`add-interaction-record`。
 - 终端拉取某图下的概念摘要：优先使用 **`get-knowledge-graph`**（`--graph-id`，可选 `--topic-id`、`--concept-limit`、`--offset`）。**不存在** `get-concepts` 子命令。
@@ -73,7 +74,7 @@ python -m scripts.cli.main list-apis
 ```json
 [
   {
-    "name": "create_learning_plan",
+    "name": "create-learning-plan",
     "version": "v1",
     "summary": "Create a new plan",
     "tags": ["learning", "write"],
@@ -84,13 +85,13 @@ python -m scripts.cli.main list-apis
 
 ### `get_api_spec(api_name)`
 
-返回指定 API 入参规范。
+返回指定 API 入参规范。`api_name` 使用 kebab-case（与 `list-apis` 的 `name` 一致）。
 
 **请求示例**
 
 ```json
 {
-  "api_name": "create_learning_plan"
+  "api_name": "create-learning-plan"
 }
 ```
 

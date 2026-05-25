@@ -8,7 +8,7 @@ Required context: `plan_id`, optional `topic_id`, optional `session_context`.
 
 ## Runtime Execution Chain
 
-1. Preflight (once per session): `get_api_spec("get_review_context")`.
+1. Preflight (once per session): `get_api_spec("get-review-context")`.
 2. If `plan_id` is missing, route to `shared` for discovery tables and selection first.
 3. Bootstrap review session:
    - `get_review_context(plan_id, topic_id?)`
