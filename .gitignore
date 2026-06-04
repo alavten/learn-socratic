@@ -5,6 +5,7 @@ __pycache__/
 *.so
 
 # Runtime artifacts (legacy repo-local DB; production default is ~/.alavten/data/knowledge/)
+data/*.db
 data/skill.sqlite3
 data/skill.sqlite3-wal
 data/skill.sqlite3-shm
