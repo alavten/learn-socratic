@@ -358,6 +358,53 @@ API_SPECS: dict[str, dict[str, Any]] = {
         "tags": ["kg", "write", "learning"],
         "stability": "beta",
     },
+    "reorder_graph_topics": {
+        "input_schema": {
+            "type": "object",
+            "required": ["graph_id", "payload"],
+            "properties": {
+                "graph_id": {"type": "string", "minLength": 1},
+                "payload": {
+                    "type": "object",
+                    "description": "parent_topic_id (null for roots) plus topic_ids or topic_order",
+                    "properties": {
+                        "parent_topic_id": {"type": ["string", "null"]},
+                        "topic_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 1,
+                        },
+                        "topic_order": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["topic_id", "sort_order"],
+                                "properties": {
+                                    "topic_id": {"type": "string"},
+                                    "sort_order": {"type": "integer", "minimum": 1},
+                                },
+                                "additionalProperties": False,
+                            },
+                            "minItems": 1,
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            "additionalProperties": False,
+        },
+        "summary": "Reorder sibling topics (full sibling set required)",
+        "tags": ["kg", "write"],
+        "stability": "stable",
+        "examples": {
+            "valid_payloads": [
+                {
+                    "graph_id": "g-software-engineering",
+                    "payload": {"parent_topic_id": None, "topic_ids": ["t1", "t2"]},
+                }
+            ]
+        },
+    },
     "list_learning_plans": {
         "input_schema": {
             "type": "object",
@@ -962,6 +1009,14 @@ class OrchestrationAppService:
             "cleanup_summary": cleanup_summary,
             "delete_summary": delete_summary,
         }
+
+    def reorder_graph_topics(self, graph_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        _validate_payload(
+            "reorder_graph_topics",
+            _compact_payload({"graph_id": graph_id, "payload": payload}),
+        )
+        log_event(logger, "reorder_graph_topics", graph_id=graph_id)
+        return kg_api.reorder_graph_topics(graph_id, payload)
 
     def list_learning_plans(self, limit: int = 20, offset: str | None = None) -> dict[str, Any]:
         return learning_api.list_learning_plans(limit=limit, offset=offset)

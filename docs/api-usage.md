@@ -278,6 +278,7 @@ CLI `--payload-file` 约定：
 - `topics` 必填：`topic_id / topic_name / topic_type`
   - `topic_type` 仅允许 `chapter` | `section`；缺失或非枚举值会被校验拒收（不会再被静默降级为 `section`）。
   - 顶层（`parent_topic_id` 为空）建议用 `chapter`；`section` 应挂在 `chapter` 之下，校验器会对违例情况发出 warning。
+  - `sort_order`：同父兄弟在 payload 内须为连续 1…N。增量 ingest 时，**新** `topic_id` 若与同父已有节点序号冲突会追加到末尾；每次 ingest 成功后存储层对全图同父兄弟归一化为连续 1…N。查询与导航顺序为 `sort_order` 升序、同序时按 `topic_id` 升序（见 `references/ingest.md`「同层 sort_order 与存储层行为」）。
 
 #### 可选：`sync_mode` / `prune_scope` / `force_delete`
 
@@ -299,6 +300,57 @@ python -m scripts.cli.main ingest-knowledge-graph --graph-id g1 --payload-file .
 1. 在权威 payload 的 `concepts` 数组中增加对应节点（或使用仓库内示例片段 [`tests/fixtures/cc_ch2_supplement_concepts.json`](../tests/fixtures/cc_ch2_supplement_concepts.json) 合并进你的 JSON）。
 2. 重新执行 `ingest_knowledge_graph`（与学习计划所用 `graph_id` 一致）。
 3. 若还需补学习遥测，在图谱已对齐后对每条概念照常使用通用 CLI `add-interaction-record`（见本文第 5 节及文中示例），不要使用单独的专用修补子命令。
+
+### `reorder_graph_topics(graph_id, payload)`
+
+批量重排**同一父节点下**全部兄弟 `Topic` 的 `sortOrder`。payload 中的 `topic_id` 集合必须与库中该父下兄弟集合**完全一致**（无缺、无多、无重复）；顺序即书序。
+
+**`payload` 示例**（`--payload-file` 仅内层对象；`graph_id` 由 CLI `--graph-id` 提供）
+
+```json
+{
+  "parent_topic_id": null,
+  "topic_ids": ["t2", "t1"]
+}
+```
+
+或使用显式序号（二选一，不可同时提供）：
+
+```json
+{
+  "parent_topic_id": "chapter-1",
+  "topic_order": [
+    { "topic_id": "s2", "sort_order": 1 },
+    { "topic_id": "s1", "sort_order": 2 }
+  ]
+}
+```
+
+- `parent_topic_id`：`null` 表示根层章节；字符串表示该父下的子节点组。
+- 根层与各父下的子层需**分别**调用；API 不递归整树。
+- 校验失败时 `validation_summary.ok` 为 `false`，数据库不变。
+
+**成功响应（节选）**
+
+```json
+{
+  "graph_id": "g1",
+  "parent_topic_id": null,
+  "topics_updated": 2,
+  "validation_summary": { "ok": true, "errors": [], "warnings": [] },
+  "topics_preview": [
+    { "topic_id": "t2", "sort_order": 1, "topic_name": "..." }
+  ]
+}
+```
+
+**CLI**
+
+```bash
+python -m scripts.cli.main reorder-graph-topics --graph-id g1 --payload-file ./reorder.json
+```
+
+Agent 流程见 [`references/reorder-topics.md`](../references/reorder-topics.md)。
 
 ### `remove_knowledge_graph_entities(graph_id, remove_payload, force_delete=False)`
 

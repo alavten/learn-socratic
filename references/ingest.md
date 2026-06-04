@@ -48,6 +48,14 @@ Required context: `graph_id`, `payload_file` (`structured_payload` JSON object o
 
 **禁止**：单次把整本书塞进一个超大 payload；为每章新建独立根 `graph_id`（除非用户明确要求隔离图，见下节遗留模式）。
 
+### 同层 sort_order 与存储层行为
+
+- **书序由 payload 表达**：运行时不会为任何 `graph_id` / `topic_id` 做特殊排序；同批 `topics` 在写入前按 `(sort_order, topic_id)` 在本批兄弟节点内重排为连续 1…N。
+- **按章增量 ingest**：新的 `topic_id`（库中尚不存在）若与同父已有兄弟冲突（常见为每章都写 `sort_order: 1`），存储层会 **追加到同父末尾**（当前同父最大 `sort_order + 1`）。若需插入中间位置，须在 payload 中写 **大于当前同父 max** 的目标序号。
+- **每次 ingest 结束**：对全图每个 `parent_topic_id` 分组，将兄弟节点 **归一化** 为连续 1…N（稳定排序：`sort_order` 升序，同序时 `topic_id` 升序）。`change_summary.topics_sort_normalized` 为被改写的行数。
+- **查询顺序**：`get_knowledge_graph` / 学习计划 focus topics 按 `sort_order` 升序、同序时按 `topic_id` 升序。
+- **历史脏数据 / 书序修正**：若多章已写成相同 `sort_order`，ingest 归一化只保证连续序号，**不**自动修正书序。由 Agent 调用 `get-knowledge-graph`，经大模型产出完整 `topic_ids` 后执行 `reorder-graph-topics`（契约见 [`reorder-topics.md`](reorder-topics.md)）。不要在技能仓库内维护书单 JSON 或运维迁移脚本。
+
 ## 书系拆章（遗留：多 graph_id + 父图）
 
 仅当用户**明确要求**章节彼此隔离、或维护历史「一书多 `graph_id`」资产时使用（与 `parent_graph_id` 校验一致）：

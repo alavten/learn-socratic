@@ -299,13 +299,13 @@ def test_validate_parent_graph_id_rejects_non_string():
     assert "parent_graph_id must be a string" in " ".join(result["errors"])
 
 
-def test_validate_b2_ch_prefix_warns_when_parent_missing():
+def test_validate_b2_ch_prefix_does_not_emit_graph_specific_warning():
     payload = sample_graph_payload()
 
     result = validate_structured_payload(payload, ingest_graph_id="b2-ch01-demo")
 
     assert result["ok"] is True
-    assert any("b2-ch" in w and "parent_graph_id" in w for w in result["warnings"])
+    assert not any("b2-ch" in w for w in result["warnings"])
 
 
 def test_validate_require_parent_errors_when_missing():

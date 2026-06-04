@@ -6,6 +6,7 @@ from typing import Any
 
 from scripts.foundation.storage import paginate, query_all
 from scripts.knowledge_graph.ingest import ingest_knowledge_graph as ingest_graph_impl
+from scripts.knowledge_graph.reorder import reorder_graph_topics as reorder_graph_topics_impl
 from scripts.knowledge_graph.store import (
     get_graph_core,
     get_topic_concepts,
@@ -198,6 +199,11 @@ def remove_knowledge_graph_entities(graph_id: str, remove_payload: dict[str, Any
     )
     summary["graph_id"] = graph_id
     return summary
+
+
+def reorder_graph_topics(graph_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Batch-update sort_order for all siblings under parent_topic_id (full set required)."""
+    return reorder_graph_topics_impl(graph_id, payload)
 
 
 def get_concepts(

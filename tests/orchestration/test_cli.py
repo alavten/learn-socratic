@@ -59,6 +59,10 @@ class FakeService:
         )
         return {"ok": True}
 
+    def reorder_graph_topics(self, graph_id, payload):
+        self.calls.append(("reorder_graph_topics", {"graph_id": graph_id, "payload": payload}))
+        return {"validation_summary": {"ok": True}}
+
 
 def test_cli_list_apis(monkeypatch):
     service = FakeService()
@@ -224,6 +228,35 @@ def test_cli_quiz_prompt_supports_session_context_json(monkeypatch):
     assert service.calls[0][0] == "get_quiz_context"
     assert service.calls[0][1]["session_context"]["quiz_pacing"] == "per_chapter"
     assert service.calls[0][1]["session_context"]["batch_size"] == 3
+
+
+def test_cli_reorder_graph_topics_reads_payload_file(monkeypatch, tmp_path):
+    service = FakeService()
+    outputs = []
+    reorder_payload = {"parent_topic_id": None, "topic_ids": ["t2", "t1"]}
+    payload_file = tmp_path / "reorder.json"
+    payload_file.write_text(json.dumps(reorder_payload), encoding="utf-8")
+
+    monkeypatch.setattr(cli, "create_app", lambda: service)
+    monkeypatch.setattr(cli, "_print_json", lambda p: outputs.append(p))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli.py",
+            "reorder-graph-topics",
+            "--graph-id",
+            "g1",
+            "--payload-file",
+            str(payload_file),
+        ],
+    )
+
+    cli.main()
+
+    assert service.calls[0][0] == "reorder_graph_topics"
+    assert service.calls[0][1]["graph_id"] == "g1"
+    assert service.calls[0][1]["payload"]["topic_ids"] == ["t2", "t1"]
+    assert outputs[0]["validation_summary"]["ok"] is True
 
 
 def test_cli_review_prompt_supports_session_context_json(monkeypatch):

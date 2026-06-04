@@ -40,6 +40,7 @@ Map natural language intent to target mode and reference contract file:
 | User intent hint                            | Target mode | Contract file          |
 | ------------------------------------------- | ----------- | ----------------- |
 | import materials, build graph, update graph | `ingest`    | `references/ingest.md` |
+| fix chapter order, reorder topics, 章节顺序 | `ingest` or dedicated reorder flow | `references/reorder-topics.md` |
 | explain, teach me, learn                    | `learn`     | `references/learn.md`  |
 | test me, quiz, ask questions, 一题一题, 批量测验, 一章测验 | `quiz`      | `references/quiz.md`   |
 | review, recap, due items                    | `review`    | `references/review.md` |
@@ -72,7 +73,7 @@ Examples:
 
 `cd …/learn-socratic && python -m scripts.cli.main get-mastery-diagnostics --plan-id PLAN_ID --concept-id c1`
 
-**Forbidden for diagnostics:** opening `data/skill.sqlite3`, ad-hoc SQL, or `from scripts.knowledge_graph.api import create_app`. Python entry point when needed: `from scripts.app import create_app`.
+**Forbidden for diagnostics:** ad-hoc SQL or `from scripts.knowledge_graph.api import create_app`. Python entry point when needed: `from scripts.app import create_app`.
 
 **`list-learning-plans` semantics:** `progress.pending_tasks` counts **LearningTask** queue rows, not “number of review questions due”.
 
@@ -97,7 +98,7 @@ Run commands from the skill repo root (the directory that contains `scripts/`), 
 
 **Allowed CLI subcommands only** (must match `scripts/cli/main.py`; do not invent names such as `get-concepts`):
 
-`list-apis`, `get-api-spec`, `list-knowledge-graphs`, `get-knowledge-graph`, `ingest-knowledge-graph`, `remove-knowledge-graph-entities`, `list-learning-plans`, `create-learning-plan`, `extend-learning-plan-topics`, `get-mode-context`, `get-mastery-diagnostics`, `add-interaction-record`
+`list-apis`, `get-api-spec`, `list-knowledge-graphs`, `get-knowledge-graph`, `ingest-knowledge-graph`, `reorder-graph-topics`, `remove-knowledge-graph-entities`, `list-learning-plans`, `create-learning-plan`, `extend-learning-plan-topics`, `get-mode-context`, `get-mastery-diagnostics`, `add-interaction-record`
 
 **Notes**
 

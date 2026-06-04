@@ -9,17 +9,13 @@ from typing import Any
 from scripts.foundation.storage import transaction
 from scripts.knowledge_graph.validate import validate_structured_payload
 
-CHAPTER1_TOPIC_ORDER_HINTS: dict[str, int] = {
-    "cc-ch1-unstable-model": 1,
-    "cc-ch1-harness-intro": 2,
-}
-
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _reindex_topic_orders(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reassign continuous sort_order 1..N within each parent sibling group (payload only)."""
     groups: dict[str | None, list[dict[str, Any]]] = {}
     for topic in topics:
         groups.setdefault(topic.get("parent_topic_id"), []).append(dict(topic))
@@ -29,7 +25,6 @@ def _reindex_topic_orders(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
         ordered = sorted(
             grouped_topics,
             key=lambda item: (
-                CHAPTER1_TOPIC_ORDER_HINTS.get(item.get("topic_id", ""), 10_000),
                 int(item.get("sort_order", 0)),
                 item.get("topic_id", ""),
             ),
@@ -39,6 +34,104 @@ def _reindex_topic_orders(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
             topic["sort_order"] = idx
             reindexed.append(topic)
     return reindexed
+
+
+def _max_sibling_sort_order(
+    conn: sqlite3.Connection,
+    graph_id: str,
+    parent_topic_id: str | None,
+) -> int:
+    if parent_topic_id is None:
+        row = conn.execute(
+            """
+            SELECT COALESCE(MAX(sortOrder), 0) AS mx
+            FROM Topic
+            WHERE graphId = ? AND parentTopicId IS NULL
+            """,
+            (graph_id,),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT COALESCE(MAX(sortOrder), 0) AS mx
+            FROM Topic
+            WHERE graphId = ? AND parentTopicId = ?
+            """,
+            (graph_id, parent_topic_id),
+        ).fetchone()
+    return int(row["mx"] or 0) if row else 0
+
+
+def _apply_new_topic_append_policy(
+    conn: sqlite3.Connection,
+    graph_id: str,
+    topics: list[dict[str, Any]],
+) -> None:
+    """Append new topics to the end of their sibling group when sort_order would collide."""
+    for topic in topics:
+        topic_id = topic.get("topic_id")
+        if not topic_id:
+            continue
+        exists = conn.execute(
+            "SELECT 1 FROM Topic WHERE topicId = ?",
+            (topic_id,),
+        ).fetchone()
+        if exists:
+            continue
+        parent_id = topic.get("parent_topic_id")
+        max_order = _max_sibling_sort_order(conn, graph_id, parent_id)
+        if max_order == 0:
+            continue
+        try:
+            sort_order = int(topic.get("sort_order", 1) or 1)
+        except (TypeError, ValueError):
+            sort_order = 1
+        if sort_order <= max_order:
+            topic["sort_order"] = max_order + 1
+
+
+def reindex_graph_sibling_sort_orders(conn: sqlite3.Connection, graph_id: str) -> int:
+    """Normalize sortOrder to continuous 1..N per parent, stable by (sortOrder, topicId)."""
+    parent_rows = conn.execute(
+        """
+        SELECT DISTINCT parentTopicId AS parent_topic_id
+        FROM Topic
+        WHERE graphId = ?
+        """,
+        (graph_id,),
+    ).fetchall()
+
+    updated = 0
+    for parent_row in parent_rows:
+        parent_id = parent_row["parent_topic_id"]
+        if parent_id is None:
+            siblings = conn.execute(
+                """
+                SELECT topicId AS topic_id, sortOrder AS sort_order
+                FROM Topic
+                WHERE graphId = ? AND parentTopicId IS NULL
+                ORDER BY sortOrder ASC, topicId ASC
+                """,
+                (graph_id,),
+            ).fetchall()
+        else:
+            siblings = conn.execute(
+                """
+                SELECT topicId AS topic_id, sortOrder AS sort_order
+                FROM Topic
+                WHERE graphId = ? AND parentTopicId = ?
+                ORDER BY sortOrder ASC, topicId ASC
+                """,
+                (graph_id, parent_id),
+            ).fetchall()
+        for idx, sibling in enumerate(siblings, start=1):
+            if int(sibling["sort_order"]) != idx:
+                conn.execute(
+                    "UPDATE Topic SET sortOrder = ? WHERE topicId = ?",
+                    (idx, sibling["topic_id"]),
+                )
+                updated += 1
+    return updated
 
 
 def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -54,12 +147,14 @@ def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, 
 
     now = _now()
     graph = payload.get("graph", {})
-    topics = _reindex_topic_orders(payload.get("topics", []))
+    raw_topics = [dict(t) for t in payload.get("topics", []) if isinstance(t, dict)]
     concepts = payload.get("concepts", [])
     topic_concepts = payload.get("topic_concepts", [])
     relations = payload.get("relations", [])
     evidences = payload.get("evidences", [])
     relation_evidences = payload.get("relation_evidences", [])
+
+    topics_sort_normalized = 0
 
     try:
         with transaction() as conn:
@@ -105,6 +200,10 @@ def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, 
                 ),
             )
 
+            if raw_topics:
+                _apply_new_topic_append_policy(conn, graph_id, raw_topics)
+            topics = _reindex_topic_orders(raw_topics)
+
             for topic in topics:
                 conn.execute(
                     """
@@ -128,6 +227,8 @@ def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, 
                         topic.get("status", "active"),
                     ),
                 )
+
+            topics_sort_normalized = reindex_graph_sibling_sort_orders(conn, graph_id)
 
             for concept in concepts:
                 conn.execute(
@@ -333,6 +434,7 @@ def ingest_knowledge_graph(graph_id: str, payload: dict[str, Any]) -> dict[str, 
             "evidences_upserted": len(evidences),
             "relation_evidence_upserted": len(relation_evidences),
             "topic_concepts_upserted": len(topic_concepts),
+            "topics_sort_normalized": topics_sort_normalized,
         },
         "validation_summary": validation,
     }

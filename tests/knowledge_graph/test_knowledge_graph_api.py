@@ -72,39 +72,104 @@ def test_ingest_chapter_payload_persists_parent_graph_id(isolated_db):
     assert listed["child-ch1"]["parent_graph_id"] == "parent-book"
 
 
-def test_ingest_reindexes_chapter1_priority_topics(isolated_db):
+def test_batch_reindex_respects_payload_sort_order(isolated_db):
     payload = sample_graph_payload()
     payload["topics"] = [
         {
-            "topic_id": "cc-ch1-harness-intro",
-            "topic_name": "Harness Engineering 概述",
+            "topic_id": "ch-a",
+            "topic_name": "Chapter A",
             "topic_type": "chapter",
             "sort_order": 1,
         },
         {
-            "topic_id": "cc-ch1-unstable-model",
-            "topic_name": "模型不可信前提",
+            "topic_id": "ch-b",
+            "topic_name": "Chapter B",
             "topic_type": "chapter",
             "sort_order": 2,
         },
     ]
-    payload["topic_concepts"] = [
-        {
-            "topic_concept_id": "tc1",
-            "topic_id": "cc-ch1-harness-intro",
-            "concept_id": "c1",
-            "role": "core",
-            "rank": 1,
-        },
-        {
-            "topic_concept_id": "tc2",
-            "topic_id": "cc-ch1-unstable-model",
-            "concept_id": "c2",
-            "role": "core",
-            "rank": 1,
-        },
-    ]
+    payload["topic_concepts"] = []
     ingest_knowledge_graph("g1", payload)
     graph = get_knowledge_graph("g1")
     topic_ids = [topic["topic_id"] for topic in graph["topics"]]
-    assert topic_ids[:2] == ["cc-ch1-unstable-model", "cc-ch1-harness-intro"]
+    assert topic_ids[:2] == ["ch-a", "ch-b"]
+    assert graph["topics"][0]["sort_order"] == 1
+    assert graph["topics"][1]["sort_order"] == 2
+
+
+def _minimal_chapter_payload(topic_id: str, topic_name: str) -> dict:
+    return {
+        "graph": {
+            "graph_type": "domain",
+            "graph_name": "Incremental Book",
+            "schema_version": "1.0.0",
+            "release_tag": "r1",
+        },
+        "topics": [
+            {
+                "topic_id": topic_id,
+                "topic_name": topic_name,
+                "topic_type": "chapter",
+                "sort_order": 1,
+            }
+        ],
+        "concepts": [],
+        "relations": [],
+        "evidences": [],
+        "topic_concepts": [],
+        "relation_evidences": [],
+    }
+
+
+def test_incremental_ingest_appends_root_chapter_sort_order(isolated_db):
+    assert ingest_knowledge_graph("inc-book", _minimal_chapter_payload("ch-1", "One"))[
+        "validation_summary"
+    ]["ok"]
+    assert ingest_knowledge_graph("inc-book", _minimal_chapter_payload("ch-2", "Two"))[
+        "validation_summary"
+    ]["ok"]
+    graph = get_knowledge_graph("inc-book")
+    roots = [t for t in graph["topics"] if not t.get("parent_topic_id")]
+    assert [t["topic_id"] for t in roots] == ["ch-1", "ch-2"]
+    assert roots[0]["sort_order"] == 1
+    assert roots[1]["sort_order"] == 2
+
+
+def test_global_normalize_makes_continuous_sibling_orders(isolated_db):
+    payload = sample_graph_payload()
+    payload["topics"] = [
+        {"topic_id": "dup-a", "topic_name": "A", "topic_type": "chapter", "sort_order": 1},
+        {"topic_id": "dup-b", "topic_name": "B", "topic_type": "chapter", "sort_order": 2},
+    ]
+    payload["topic_concepts"] = []
+    assert ingest_knowledge_graph("g-dup", payload)["validation_summary"]["ok"]
+
+    from scripts.foundation.storage import transaction
+
+    with transaction() as conn:
+        conn.execute("UPDATE Topic SET sortOrder = 1 WHERE topicId IN ('dup-a', 'dup-b')")
+
+    touch = {
+        "graph": {
+            "graph_type": "domain",
+            "graph_name": "Dup",
+            "schema_version": "1.0.0",
+            "release_tag": "r2",
+        },
+        "topics": [],
+        "concepts": [],
+        "relations": [],
+        "evidences": [],
+        "topic_concepts": [],
+        "relation_evidences": [],
+    }
+    result = ingest_knowledge_graph("g-dup", touch)
+    assert result["validation_summary"]["ok"] is True
+    assert result["change_summary"]["topics_sort_normalized"] >= 1
+
+    graph = get_knowledge_graph("g-dup")
+    roots = sorted(
+        [t for t in graph["topics"] if not t.get("parent_topic_id")],
+        key=lambda t: t["sort_order"],
+    )
+    assert [t["sort_order"] for t in roots] == [1, 2]

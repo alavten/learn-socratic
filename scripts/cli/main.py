@@ -83,6 +83,17 @@ def _parser() -> argparse.ArgumentParser:
         help="Drop learning-plan references then hard-delete graph entities",
     )
 
+    reorder_topics = sub.add_parser(
+        "reorder-graph-topics",
+        help="Batch reorder sibling topic sort_order (full sibling set required)",
+    )
+    reorder_topics.add_argument("--graph-id", required=True)
+    reorder_topics.add_argument(
+        "--payload-file",
+        required=True,
+        help="JSON: parent_topic_id (null for roots) and topic_ids or topic_order",
+    )
+
     list_plans = sub.add_parser("list-learning-plans", help="List learning plans")
     list_plans.add_argument("--limit", type=int, default=20)
     list_plans.add_argument("--offset")
@@ -184,6 +195,16 @@ def _dispatch_cli(service: Any, args: argparse.Namespace) -> None:
                 graph_id=args.graph_id,
                 remove_payload=remove_payload,
                 force_delete=bool(args.force_delete),
+            )
+        )
+        return
+    if args.command == "reorder-graph-topics":
+        payload_path = Path(args.payload_file)
+        reorder_payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        _print_json(
+            service.reorder_graph_topics(
+                graph_id=args.graph_id,
+                payload=reorder_payload,
             )
         )
         return

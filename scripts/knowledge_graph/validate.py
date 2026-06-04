@@ -128,16 +128,6 @@ def validate_structured_payload(
                     "payload.graph.ingest_policy.require_parent is true but parent_graph_id is missing or empty"
                 )
 
-        if (
-            ingest_graph_id is not None
-            and str(ingest_graph_id).startswith("b2-ch")
-            and not parent_trim
-        ):
-            warnings.append(
-                "graph_id starts with 'b2-ch' but parent_graph_id is missing; "
-                "series chapter graphs should set parent_graph_id to the book-level parent graph"
-            )
-
     concepts = payload.get("concepts", [])
     relations = payload.get("relations", [])
     evidences = payload.get("evidences", [])
