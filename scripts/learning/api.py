@@ -16,6 +16,11 @@ from scripts.knowledge_graph.store import (
     list_scope_concepts_ordered,
     resolve_scope_concepts,
 )
+from scripts.learning.learn_chapter import (
+    fetch_recent_activity,
+    fetch_touched_concept_ids,
+    resolve_learn_active_topic,
+)
 from scripts.learning.session import add_interaction_record as append_record_impl
 from scripts.learning.state import update_state_from_record
 from scripts.learning.tasking import sync_task_status_from_result, upsert_task_for_state
@@ -333,11 +338,15 @@ def get_learn_context_data(
     )
 
     plan_topic_ids = _fetch_plan_topic_ids(plan_id)
-    active_topic_id = topic_id
-    if not active_topic_id and scope.get("topic_ids"):
-        active_topic_id = scope["topic_ids"][0]
-    if not active_topic_id and plan_topic_ids:
-        active_topic_id = plan_topic_ids[0]
+    touched_concept_ids = sorted(fetch_touched_concept_ids(plan_id))
+    recent_activity_concept_id, recent_activity_topic_id = fetch_recent_activity(plan_id)
+    active_topic_id = resolve_learn_active_topic(
+        plan_topic_ids,
+        concept_briefs,
+        set(touched_concept_ids),
+        recent_activity_topic_id,
+        topic_id,
+    )
 
     return {
         "goal_summary": {"goal_type": plan["goal_type"], "plan_status": plan["status"]},
@@ -356,6 +365,9 @@ def get_learn_context_data(
         },
         "recent_learn_concepts": _fetch_recent_learn_concepts(plan_id),
         "learned_exposure_concept_ids": _fetch_learned_exposure_concept_ids(plan_id),
+        "touched_concept_ids": touched_concept_ids,
+        "recent_activity_concept_id": recent_activity_concept_id,
+        "recent_activity_topic_id": recent_activity_topic_id,
         "plan_topic_ids": plan_topic_ids,
         "active_topic_id": active_topic_id,
     }

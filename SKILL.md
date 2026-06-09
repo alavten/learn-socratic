@@ -25,6 +25,7 @@ Applies to every session regardless of mode.
 - Keep this file thin: mode-specific fields/steps live only in reference contract files (`references/*.md`).
 - Do not use memory-only fallback as primary evidence; run required API discovery first.
 - **Books and large documents**: use one stable `graph_id` for the whole book; ingest **one chapter per turn** into that same graph (chapters as `topics` with `topic_type: chapter`, sections under `parent_topic_id`). Do not split a single book into parallel root graphs or try to build the full book payload in one shot. Chapter reorder uses `reorder-graph-topics` inside `references/ingest.md`.
+- **Learn chapter progression**: teach one chapter at a time from the most recently active chapter forward; concepts touched in any mode (learn/quiz/review) are skipped in learn; do not backfill earlier chapters (use quiz/review for gaps).
 - **Learning telemetry is mandatory** for `learn` / `quiz` / `review`.
 - **Quiz storage granularity** is always one `add_interaction_record` per judged question, regardless of `quiz_pacing` (`per_concept` vs `per_chapter`); pacing only changes how many questions appear in one user turn.
 - After each taught concept or judged learner answer, immediately call `add_interaction_record` with `concept_id` and outcome payload.

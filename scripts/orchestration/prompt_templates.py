@@ -22,6 +22,7 @@ def _build_learn_prompt(context: dict[str, Any]) -> str:
     current_item = session_queue.get("current_item")
     next_item = session_queue.get("next_item")
     chapter_progress = context.get("chapter_progress", {})
+    active_topic_id = context.get("active_topic_id")
     next_session_context = context.get("next_session_context", {})
     suggested_plan_action = context.get("suggested_plan_action")
     depth_level = context.get("depth_level")
@@ -37,11 +38,13 @@ def _build_learn_prompt(context: dict[str, Any]) -> str:
         "You are a Socratic learning coach.",
         f"Goal: {goals}",
         f"Scope: {scope}",
+        f"Active topic: {active_topic_id}",
         f"Chapter progress: {chapter_progress}",
         f"Anchor concept_id (MUST teach this turn): {anchor_id}",
         f"Anchor canonical_name: {anchor_name}",
         f"Next concept_id (after current completes): {next_id}",
-        f"Queue concept_ids (book order): {queue_ids}",
+        f"Queue (this chapter): {queue_ids}",
+        "Stay in active chapter; earlier gaps via quiz/review.",
         f"Depth level: {depth_level}",
         f"next_session_context (return to caller after each turn): {next_session_context}",
         "Use Feynman loop (explain -> learner restates -> diagnose gap -> simplify).",

@@ -61,9 +61,11 @@ def test_learn_context_skips_learned_concepts_without_session_context(isolated_d
 
 
 def test_learn_context_respects_served_concept_ids_in_session_context(isolated_db):
-    ingest_knowledge_graph("g1", sample_graph_payload())
+    from tests.helpers import multi_concept_graph_payload
+
+    ingest_knowledge_graph("g-multi", multi_concept_graph_payload())
     service = OrchestrationAppService()
-    plan = service.create_learning_plan("g1")
+    plan = service.create_learning_plan("g-multi", topic_id="t1")
 
     first = service.get_learn_context(plan["plan_id"])
     first_concept = first["context_summary"]["session_queue"]["current_item"]["concept_id"]
@@ -79,6 +81,7 @@ def test_learn_context_respects_served_concept_ids_in_session_context(isolated_d
     second_current = second["context_summary"]["session_queue"]["current_item"]
     assert second_current is not None
     assert second_current["concept_id"] != first_concept
+    assert second_current["topic_id"] == "t1"
 
 
 def test_learn_context_suggests_extend_when_chapter_queue_exhausted(isolated_db):

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from scripts.knowledge_graph.store import get_next_sibling_topic_id
+from scripts.learning.learn_chapter import next_topic_in_plan_order
 
 QUIZ_PACINGS = frozenset({"per_concept", "per_chapter"})
 
@@ -130,11 +131,11 @@ def prepare_learn_session_state(
     incoming = dict(session_context or {})
     served = set(incoming.get("served_concept_ids") or [])
     if not incoming.get("served_concept_ids"):
-        recent_learn = context.get("recent_learn_concepts") or []
-        if recent_learn:
-            served.add(recent_learn[0])
+        recent_activity = context.get("recent_activity_concept_id")
+        if recent_activity:
+            served.add(recent_activity)
 
-    learned_exposure = set(context.get("learned_exposure_concept_ids") or [])
+    touched = set(context.get("touched_concept_ids") or [])
     retry_state = dict(incoming.get("retry_state") or {})
     last_completed = incoming.get("last_completed_concept_id")
     last_result = incoming.get("last_result")
@@ -155,10 +156,14 @@ def prepare_learn_session_state(
             retry_state.pop(last_completed, None)
 
     ordered_concepts = context.get("ordered_concepts") or []
+    active_topic_id = context.get("active_topic_id")
+    chapter_concepts = [
+        c for c in ordered_concepts if not active_topic_id or c.get("topic_id") == active_topic_id
+    ]
     queue_items: list[dict[str, Any]] = []
     blocked_items: list[dict[str, Any]] = []
 
-    for concept in ordered_concepts:
+    for concept in chapter_concepts:
         concept_id = concept.get("concept_id")
         if not concept_id:
             continue
@@ -175,7 +180,7 @@ def prepare_learn_session_state(
             continue
         if concept_id in served:
             continue
-        if concept_id in learned_exposure:
+        if concept_id in touched:
             continue
         queue_items.append(item)
 
@@ -183,22 +188,21 @@ def prepare_learn_session_state(
 
     depth_level = incoming.get("depth_level")
     graph_id = context.get("graph_id")
-    active_topic_id = context.get("active_topic_id")
-    plan_topic_ids = set(context.get("plan_topic_ids") or [])
+    plan_topic_ids_list = list(context.get("plan_topic_ids") or [])
+    plan_topic_ids = set(plan_topic_ids_list)
 
-    concepts_in_topic = [
-        c for c in ordered_concepts if c.get("topic_id") == active_topic_id
-    ]
     concepts_served = {
         c["concept_id"]
-        for c in concepts_in_topic
-        if c.get("concept_id") in served or c.get("concept_id") in learned_exposure
+        for c in chapter_concepts
+        if c.get("concept_id") in served or c.get("concept_id") in touched
     }
 
     next_topic_id: str | None = None
     suggested_plan_action: dict[str, Any] | None = None
-    if not queue_items and active_topic_id and graph_id:
-        next_topic_id = get_next_sibling_topic_id(graph_id, active_topic_id)
+    if not queue_items and active_topic_id:
+        next_topic_id = next_topic_in_plan_order(plan_topic_ids_list, active_topic_id)
+        if not next_topic_id and graph_id:
+            next_topic_id = get_next_sibling_topic_id(graph_id, active_topic_id)
         if next_topic_id and next_topic_id not in plan_topic_ids:
             suggested_plan_action = {
                 "action": "extend_learning_plan_topics",
@@ -207,7 +211,7 @@ def prepare_learn_session_state(
 
     chapter_progress = {
         "current_topic_id": active_topic_id,
-        "concepts_total": len(concepts_in_topic),
+        "concepts_total": len(chapter_concepts),
         "concepts_served": len(concepts_served),
         "next_topic_id": next_topic_id,
     }
