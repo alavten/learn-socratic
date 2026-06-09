@@ -89,3 +89,4 @@ git clone https://github.com/alavten/learn-socratic.git
 
 - 总路由与意图表：**`SKILL.md`**
 - 各模式字段、顺序约束与异常处理：**`references/*.md`**
+- 架构、数据模型与 API 设计：**`docs/architecture-design.md`**

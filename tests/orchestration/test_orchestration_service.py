@@ -36,12 +36,68 @@ def test_prompt_generation_and_record_commit(isolated_db):
     plan = service.create_learning_plan("g1", topic_id="t1")
     learn_prompt = service.get_learn_context(plan["plan_id"], topic_id="t1")
     assert "prompt_text" in learn_prompt
+    assert learn_prompt["context_summary"]["session_queue"]["current_item"]["concept_id"] == "c1"
     commit = service.add_interaction_record(
         plan["plan_id"],
         "learn",
         {"concept_id": "c1", "result": "ok", "score": 80, "difficulty_bucket": "easy"},
     )
     assert "state_delta_summary" in commit
+
+
+def test_learn_context_skips_learned_concepts_without_session_context(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    service = OrchestrationAppService()
+    plan = service.create_learning_plan("g1", topic_id="t1")
+    service.add_interaction_record(
+        plan["plan_id"],
+        "learn",
+        {"concept_id": "c1", "result": "ok", "score": 80, "difficulty_bucket": "easy"},
+    )
+
+    prompt = service.get_learn_context(plan["plan_id"], topic_id="t1")
+    current = prompt["context_summary"]["session_queue"]["current_item"]
+    assert current is None
+
+
+def test_learn_context_respects_served_concept_ids_in_session_context(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    service = OrchestrationAppService()
+    plan = service.create_learning_plan("g1")
+
+    first = service.get_learn_context(plan["plan_id"])
+    first_concept = first["context_summary"]["session_queue"]["current_item"]["concept_id"]
+
+    second = service.get_learn_context(
+        plan["plan_id"],
+        session_context={
+            "served_concept_ids": [first_concept],
+            "last_completed_concept_id": first_concept,
+            "last_result": "ok",
+        },
+    )
+    second_current = second["context_summary"]["session_queue"]["current_item"]
+    assert second_current is not None
+    assert second_current["concept_id"] != first_concept
+
+
+def test_learn_context_suggests_extend_when_chapter_queue_exhausted(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    service = OrchestrationAppService()
+    plan = service.create_learning_plan("g1", topic_id="t1")
+    service.add_interaction_record(
+        plan["plan_id"],
+        "learn",
+        {"concept_id": "c1", "result": "ok", "score": 85, "difficulty_bucket": "medium"},
+    )
+
+    prompt = service.get_learn_context(plan["plan_id"], topic_id="t1")
+    summary = prompt["context_summary"]
+    assert summary["session_queue"]["current_item"] is None
+    assert summary["chapter_progress"]["next_topic_id"] == "t2"
+    assert summary["suggested_plan_action"]["action"] == "extend_learning_plan_topics"
+    assert summary["suggested_plan_action"]["topic_ids"] == ["t2"]
+    assert "extend_learning_plan_topics" in prompt["prompt_text"]
 
 
 def test_get_mastery_diagnostics_orchestration(isolated_db):

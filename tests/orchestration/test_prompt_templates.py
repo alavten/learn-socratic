@@ -3,23 +3,34 @@ import pytest
 from scripts.orchestration.prompt_templates import build_prompt
 
 
-def test_build_learn_prompt_contains_goal_and_concept_focus():
+def test_build_learn_prompt_contains_goal_and_session_queue():
     context = {
         "goal_summary": {"goal_type": "capability_growth"},
         "concept_scope": {"topic_ids": ["t1"]},
-        "concept_pack_brief": {
-            "concepts": [{"canonical_name": f"Concept{i}"} for i in range(10)],
+        "session_queue": {
+            "items": [
+                {"concept_id": "c1", "canonical_name": "Variable"},
+                {"concept_id": "c2", "canonical_name": "Function"},
+            ],
+            "current_item": {"concept_id": "c1", "canonical_name": "Variable"},
+            "next_item": {"concept_id": "c2", "canonical_name": "Function"},
         },
+        "chapter_progress": {
+            "current_topic_id": "t1",
+            "concepts_total": 2,
+            "concepts_served": 0,
+            "next_topic_id": None,
+        },
+        "next_session_context": {"served_concept_ids": [], "queue_length": 2},
     }
     prompt = build_prompt("learn", context)
     assert "Socratic learning coach" in prompt
     assert "capability_growth" in prompt
-    assert "Concept0" in prompt
-    assert "Concept7" in prompt
-    assert "Concept8" not in prompt
+    assert "Anchor concept_id (MUST teach this turn): c1" in prompt
+    assert "Next concept_id (after current completes): c2" in prompt
     assert "Feynman loop" in prompt
     assert "Explain, Interpret, Apply" in prompt
-    assert "anchor concept" in prompt
+    assert "Do NOT pick a different concept from scope" in prompt
     assert "Do not assess a concept that was not explicitly taught" in prompt
     assert "L1 recall" in prompt
     assert "Scope" in prompt

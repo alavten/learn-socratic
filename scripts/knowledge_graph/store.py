@@ -148,6 +148,149 @@ def get_topic_concepts(
     return {"items": visible, "has_more": has_more, "next_offset": next_offset}
 
 
+def _dedupe_ordered_concept_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for row in rows:
+        concept_id = row.get("concept_id")
+        if not concept_id or concept_id in seen:
+            continue
+        seen.add(concept_id)
+        deduped.append(row)
+    return deduped
+
+
+def list_scope_concepts_ordered(
+    graph_id: str,
+    concept_scope: dict[str, Any],
+    concept_limit: int = 200,
+    offset: str | None = None,
+) -> dict[str, Any]:
+    """Return concepts in book order: Topic.sortOrder then TopicConcept.rank."""
+    page_limit, offset_value = paginate(concept_limit, offset)
+    concept_ids = [c for c in (concept_scope.get("concept_ids") or []) if c]
+    topic_ids = [t for t in (concept_scope.get("topic_ids") or []) if t]
+
+    if concept_ids:
+        placeholders = ",".join("?" for _ in concept_ids)
+        order_cases = ",".join(f"WHEN ? THEN {idx}" for idx, _ in enumerate(concept_ids))
+        rows = query_all(
+            f"""
+            SELECT
+                c.conceptId AS concept_id,
+                tc.topicId AS topic_id,
+                tc.rank AS concept_rank,
+                t.sortOrder AS topic_sort_order,
+                c.canonicalName AS canonical_name,
+                c.definition AS short_definition,
+                c.difficultyLevel AS difficulty
+            FROM Concept c
+            LEFT JOIN TopicConcept tc ON tc.conceptId = c.conceptId
+            LEFT JOIN Topic t ON t.topicId = tc.topicId AND t.graphId = c.graphId
+            WHERE c.graphId = ? AND c.dr = 0 AND c.conceptId IN ({placeholders})
+            ORDER BY
+                CASE c.conceptId {order_cases} ELSE 999999 END,
+                COALESCE(t.sortOrder, 999999) ASC,
+                COALESCE(tc.rank, 999999) ASC,
+                tc.topicConceptId ASC
+            """,
+            (graph_id, *concept_ids, *concept_ids),
+        )
+    elif topic_ids:
+        placeholders = ",".join("?" for _ in topic_ids)
+        rows = query_all(
+            f"""
+            SELECT
+                tc.conceptId AS concept_id,
+                tc.topicId AS topic_id,
+                tc.rank AS concept_rank,
+                t.sortOrder AS topic_sort_order,
+                c.canonicalName AS canonical_name,
+                c.definition AS short_definition,
+                c.difficultyLevel AS difficulty
+            FROM TopicConcept tc
+            JOIN Topic t ON t.topicId = tc.topicId AND t.graphId = ?
+            JOIN Concept c ON c.conceptId = tc.conceptId AND c.dr = 0
+            WHERE tc.topicId IN ({placeholders})
+            ORDER BY t.sortOrder ASC, t.topicId ASC, tc.rank ASC, tc.topicConceptId ASC
+            """,
+            (graph_id, *topic_ids),
+        )
+    else:
+        rows = query_all(
+            """
+            SELECT
+                tc.conceptId AS concept_id,
+                tc.topicId AS topic_id,
+                tc.rank AS concept_rank,
+                t.sortOrder AS topic_sort_order,
+                c.canonicalName AS canonical_name,
+                c.definition AS short_definition,
+                c.difficultyLevel AS difficulty
+            FROM TopicConcept tc
+            JOIN Topic t ON t.topicId = tc.topicId AND t.graphId = ?
+            JOIN Concept c ON c.conceptId = tc.conceptId AND c.dr = 0
+            ORDER BY t.sortOrder ASC, t.topicId ASC, tc.rank ASC, tc.topicConceptId ASC
+            """,
+            (graph_id,),
+        )
+
+    briefs = _dedupe_ordered_concept_rows(rows)
+    for item in briefs:
+        definition = item.get("short_definition") or ""
+        item["short_definition"] = definition[:160] if definition else ""
+
+    total = len(briefs)
+    visible = briefs[offset_value : offset_value + page_limit]
+    has_more = offset_value + page_limit < total
+    next_offset = str(offset_value + page_limit) if has_more else None
+    return {
+        "concept_briefs": visible,
+        "has_more": has_more,
+        "next_offset": next_offset,
+        "total_in_scope": total,
+    }
+
+
+def get_next_sibling_topic_id(graph_id: str, topic_id: str) -> str | None:
+    """Return the next topic under the same parent by sortOrder, or None."""
+    current = query_one(
+        """
+        SELECT topicId AS topic_id, parentTopicId AS parent_topic_id, sortOrder AS sort_order
+        FROM Topic
+        WHERE graphId = ? AND topicId = ?
+        """,
+        (graph_id, topic_id),
+    )
+    if not current:
+        return None
+    parent_id = current["parent_topic_id"]
+    sort_order = current["sort_order"]
+    if parent_id is None:
+        nxt = query_one(
+            """
+            SELECT topicId AS topic_id
+            FROM Topic
+            WHERE graphId = ? AND parentTopicId IS NULL AND sortOrder > ?
+            ORDER BY sortOrder ASC, topicId ASC
+            LIMIT 1
+            """,
+            (graph_id, sort_order),
+        )
+    else:
+        nxt = query_one(
+            """
+            SELECT topicId AS topic_id
+            FROM Topic
+            WHERE graphId = ? AND parentTopicId = ? AND sortOrder > ?
+            ORDER BY sortOrder ASC, topicId ASC
+            LIMIT 1
+            """,
+            (graph_id, parent_id, sort_order),
+        )
+    return nxt["topic_id"] if nxt else None
+
+
 def resolve_scope_concepts(graph_id: str, concept_scope: dict[str, Any]) -> list[str]:
     concept_ids = concept_scope.get("concept_ids") or []
     if concept_ids:

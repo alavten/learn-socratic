@@ -17,21 +17,48 @@ def build_prompt(mode: str, context: dict[str, Any]) -> str:
 
 def _build_learn_prompt(context: dict[str, Any]) -> str:
     goals = context.get("goal_summary", {})
-    concept_pack = context.get("concept_pack_brief", {})
     scope = context.get("concept_scope", {})
-    concept_names = [c.get("canonical_name") for c in concept_pack.get("concepts", [])[:8]]
-    return (
-        "You are a Socratic learning coach.\n"
-        f"Goal: {goals}\n"
-        f"Scope: {scope}\n"
-        f"Concept focus: {concept_names}\n"
-        "Use Feynman loop (explain -> learner restates -> diagnose gap -> simplify).\n"
-        "Keep one anchor concept and one core check per turn.\n"
-        "Do not assess a concept that was not explicitly taught in this turn.\n"
-        "Use depth ladder: L1 recall, L2 understand, L3 apply, L4 transfer.\n"
-        "Apply UBD evidence focus: Explain, Interpret, Apply.\n"
-        "Explain clearly, ask one diagnostic question, and propose next step."
-    )
+    session_queue = context.get("session_queue", {})
+    current_item = session_queue.get("current_item")
+    next_item = session_queue.get("next_item")
+    chapter_progress = context.get("chapter_progress", {})
+    next_session_context = context.get("next_session_context", {})
+    suggested_plan_action = context.get("suggested_plan_action")
+    depth_level = context.get("depth_level")
+    anchor_id = current_item.get("concept_id") if isinstance(current_item, dict) else None
+    anchor_name = current_item.get("canonical_name") if isinstance(current_item, dict) else None
+    next_id = next_item.get("concept_id") if isinstance(next_item, dict) else None
+    queue_ids = [
+        item.get("concept_id")
+        for item in (session_queue.get("items") or [])
+        if isinstance(item, dict) and item.get("concept_id")
+    ][:5]
+    lines = [
+        "You are a Socratic learning coach.",
+        f"Goal: {goals}",
+        f"Scope: {scope}",
+        f"Chapter progress: {chapter_progress}",
+        f"Anchor concept_id (MUST teach this turn): {anchor_id}",
+        f"Anchor canonical_name: {anchor_name}",
+        f"Next concept_id (after current completes): {next_id}",
+        f"Queue concept_ids (book order): {queue_ids}",
+        f"Depth level: {depth_level}",
+        f"next_session_context (return to caller after each turn): {next_session_context}",
+        "Use Feynman loop (explain -> learner restates -> diagnose gap -> simplify).",
+        "Keep one anchor concept and one core check per turn.",
+        "Do NOT pick a different concept from scope; only teach anchor concept_id.",
+        "Do not assess a concept that was not explicitly taught in this turn.",
+        "Use depth ladder: L1 recall, L2 understand, L3 apply, L4 transfer.",
+        "Apply UBD evidence focus: Explain, Interpret, Apply.",
+        "After add_interaction_record succeeds, advance using session_queue order only.",
+        "Explain clearly, ask one diagnostic question, and propose next step.",
+    ]
+    if suggested_plan_action:
+        lines.append(
+            f"Chapter complete: call {suggested_plan_action.get('action')} "
+            f"with topic_ids={suggested_plan_action.get('topic_ids')} before continuing."
+        )
+    return "\n".join(lines) + "\n"
 
 
 def _build_quiz_prompt(context: dict[str, Any]) -> str:

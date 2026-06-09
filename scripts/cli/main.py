@@ -118,8 +118,9 @@ def _parser() -> argparse.ArgumentParser:
     mode_context.add_argument(
         "--session-context-json",
         help=(
-            "Optional JSON session state: review (served_concept_ids, last_result, ...); "
-            "quiz (quiz_pacing, batch_size, pending_items, served_concept_ids)"
+            "Optional JSON session state: learn (served_concept_ids, last_completed_concept_id, "
+            "last_result, depth_level); review (served_concept_ids, last_result, ...); "
+            "quiz (quiz_pacing, pacing_hint, batch_size, pending_items, served_concept_ids)"
         ),
     )
 
@@ -227,7 +228,13 @@ def _dispatch_cli(service: Any, args: argparse.Namespace) -> None:
     if args.command == "get-mode-context":
         session_context = json.loads(args.session_context_json) if args.session_context_json else None
         if args.mode == "learn":
-            _print_json(service.get_learn_context(plan_id=args.plan_id, topic_id=args.topic_id))
+            _print_json(
+                service.get_learn_context(
+                    plan_id=args.plan_id,
+                    topic_id=args.topic_id,
+                    session_context=session_context,
+                )
+            )
             return
         if args.mode == "quiz":
             _print_json(

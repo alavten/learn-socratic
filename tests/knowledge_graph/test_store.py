@@ -1,8 +1,10 @@
 from scripts.knowledge_graph.api import ingest_knowledge_graph
 from scripts.knowledge_graph.store import (
     collect_concept_ids_with_descendants,
+    get_next_sibling_topic_id,
     get_topic_concepts,
     list_graphs,
+    list_scope_concepts_ordered,
     resolve_scope_concepts,
 )
 from tests.helpers import sample_graph_payload
@@ -102,6 +104,56 @@ def test_resolve_scope_concepts_priority_and_fallback(isolated_db):
 def test_resolve_scope_concepts_empty_when_no_data(isolated_db):
     concepts = resolve_scope_concepts("unknown-graph", {})
     assert concepts == []
+
+
+def test_list_scope_concepts_ordered_follows_topic_rank_not_alphabet(isolated_db):
+    payload = sample_graph_payload()
+    payload["concepts"] = [
+        {
+            "concept_id": "c-zebra",
+            "canonical_name": "Zebra Term",
+            "definition": "Later in rank.",
+            "concept_type": "fundamental",
+            "difficulty_level": "easy",
+        },
+        {
+            "concept_id": "c-apple",
+            "canonical_name": "Apple Term",
+            "definition": "Earlier in rank.",
+            "concept_type": "fundamental",
+            "difficulty_level": "easy",
+        },
+    ]
+    payload["topic_concepts"] = [
+        {
+            "topic_concept_id": "tc-z",
+            "topic_id": "t1",
+            "concept_id": "c-zebra",
+            "role": "core",
+            "rank": 1,
+        },
+        {
+            "topic_concept_id": "tc-a",
+            "topic_id": "t1",
+            "concept_id": "c-apple",
+            "role": "core",
+            "rank": 2,
+        },
+    ]
+    payload["relations"] = []
+    payload["evidences"] = []
+    payload["relation_evidences"] = []
+    ingest_knowledge_graph("g-order", payload)
+
+    ordered = list_scope_concepts_ordered("g-order", {"topic_ids": ["t1"]})
+    ids = [item["concept_id"] for item in ordered["concept_briefs"]]
+    assert ids == ["c-zebra", "c-apple"]
+
+
+def test_get_next_sibling_topic_id_returns_following_chapter(isolated_db):
+    ingest_knowledge_graph("g1", sample_graph_payload())
+    assert get_next_sibling_topic_id("g1", "t1") == "t2"
+    assert get_next_sibling_topic_id("g1", "t2") is None
 
 
 def test_collect_concept_ids_with_descendants_part_of_chain(isolated_db):

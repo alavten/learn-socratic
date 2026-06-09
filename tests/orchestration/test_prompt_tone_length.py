@@ -5,7 +5,14 @@ def test_prompt_length_guardrails():
     contexts = {
         "learn": {
             "goal_summary": {"goal_type": "capability_growth"},
-            "concept_pack_brief": {"concepts": [{"canonical_name": f"C{i}"} for i in range(20)]},
+            "concept_scope": {"topic_ids": ["t1"]},
+            "session_queue": {
+                "items": [{"concept_id": "c1", "canonical_name": "C0"}],
+                "current_item": {"concept_id": "c1", "canonical_name": "C0"},
+                "next_item": None,
+            },
+            "chapter_progress": {"current_topic_id": "t1", "concepts_total": 1, "concepts_served": 0},
+            "next_session_context": {"served_concept_ids": [], "queue_length": 1},
         },
         "quiz": {
             "quiz_scope": {"topic_ids": ["t1"]},
@@ -19,7 +26,7 @@ def test_prompt_length_guardrails():
             "forgetting_risk_summary": {"avg_forgetting_risk": 0.4},
         },
     }
-    limits = {"learn": 600, "quiz": 950, "review": 600}
+    limits = {"learn": 1100, "quiz": 950, "review": 600}
     for mode, context in contexts.items():
         prompt = build_prompt(mode, context)
         assert len(prompt) <= limits[mode]
@@ -30,7 +37,13 @@ def test_learn_prompt_single_core_question_instruction():
         "learn",
         {
             "goal_summary": {"goal_type": "capability_growth"},
-            "concept_pack_brief": {"concepts": [{"canonical_name": "A"}]},
+            "concept_scope": {"topic_ids": ["t1"]},
+            "session_queue": {
+                "current_item": {"concept_id": "c1", "canonical_name": "A"},
+                "items": [{"concept_id": "c1", "canonical_name": "A"}],
+            },
+            "chapter_progress": {},
+            "next_session_context": {},
         },
     )
     assert "ask one diagnostic question" in prompt

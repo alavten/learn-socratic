@@ -1,90 +1,68 @@
-# Shared Mode Contract
+# Shared Mode（语义澄清）
 
-## Trigger Conditions
+## 适用场景
 
-- User intent is unclear or conflicting.
-- Required context is missing (`plan_id`, `topic_id`, or target graph).
-- A mode workflow cannot continue due to recoverable validation errors.
-- User asks to update or correct learning records (掌握记录、学习轨迹、上次评分/结果) — route to the originating mode (`quiz` / `learn` / `review`) for per-item writes; do not batch-write records inside `shared`.
-- User asks to view or fetch graph chapter/section/topic content (browse/export, not learn/quiz/review).
-- User asks for a **mastery / weak-point report** (薄弱点、掌握程度、章节表现) without starting an interactive learn/quiz/review turn.
-- User asks for a **mastery / weak-point report** (薄弱点、掌握程度、章节答题表现) — not an interactive review turn.
+- 用户意图冲突或无法映射到单一 mode
+- 缺 `plan_id`、`graph_id` 或目标图谱
+- 主 mode 因可恢复错误中断（缺上下文、校验失败）
+- 浏览章节/概念内容（非 learn/quiz/review 交互）
+- 薄弱点/掌握程度报告（非交互式复习）
+- 修正或补写学习 record
+- 用户仅提供本地文件路径且无其他学习意图 → 直接 handoff `ingest`
 
-## Steps
+## 前置输入
 
-1. Run discovery APIs and build a fresh snapshot for this turn (no memory-only fallback):
-   - `list_knowledge_graphs()` (paginate until done when `has_more=true`)
-   - `list_learning_plans()` (paginate until done when `has_more=true`)
-2. Present discovery results as two independent markdown tables before any mode decision:
-   - `KnowledgeGraphs`
-   - `PendingLearningPlans`
-3. Ask one concise clarification question that asks user to choose **plan** or **graph** first (not mode first).
-4. After explicit user selection, return control to router (`../SKILL.md` Intent Matrix) for final mode selection.
+| 项 | required | 说明 |
+| --- | --- | --- |
+| `file_path` | no | 仅路径时走 ingest |
+| `plan_id` / `graph_id` | no | 专项分支所需 |
+| `last_mode` / `last_error` | no | 失败恢复 |
 
-## Scenarios
+## 执行步骤
 
-These scenarios are short clarifiers used only to decide the next hop.
+### 1. API 发现（exec 前必做）
 
-### Single file path only
+```bash
+cd <技能根目录> && python -m scripts.cli.main list-apis
+cd <技能根目录> && python -m scripts.cli.main get-api-spec --api-name <method>
+```
 
-When user provides only one local file path without additional learning intent, skip shared clarification and hand off to `ingest` (`references/ingest.md`).
+### 2. 缺上下文时
 
-### Get chapter/topic content (CLI)
+- `list-knowledge-graphs`（`has_more` 时分页）
+- `list-learning-plans`（`has_more` 时分页）
+- 展示 **KnowledgeGraphs** 与 **PendingLearningPlans** 两张表
+- 用 `[单选]` 请用户先选 **plan** 或 **graph**
 
-When user asks to view or fetch a specific graph chapter/section/topic (e.g. "第3章有哪些概念", "看一下事务隔离这一节") without starting learn/quiz/review:
+### 3. 选择 Mode
 
-1. Resolve `graph_id` and `topic_id` via the discovery flow above if missing; if only a chapter/section name is given, run `get-knowledge-graph` once without `--topic-id` and match against `topics`.
-2. From the skill repo root, fetch scoped content:
+向用户展示下表，**MUST** 用 `[单选]` 选择一项：
 
-   `python -m scripts.cli.main get-knowledge-graph --graph-id GRAPH_ID --topic-id TOPIC_ID [--concept-limit 20] [--offset OFFSET]`
+| Mode | 说明 | 文档 |
+| ---- | ---- | ---- |
+| `ingest` | 导入/更新知识图谱、修正章节顺序 | [ingest.md](./ingest.md) |
+| `learn` | 讲解与带学 | [learn.md](./learn.md) |
+| `quiz` | 测验与刷题 | [quiz.md](./quiz.md) |
+| `review` | 间隔复习与巩固 | [review.md](./review.md) |
 
-3. If the response has `has_more=true`, paginate with `--offset` set to `next_offset` until enough for the user or they stop.
-4. Return `topics`, `topic_concepts`, and `concept_briefs` from the CLI JSON; stay in `shared` (do not hand off to `learn` unless the user then asks to study).
+用户选定后，**MUST** 进入对应文档第一步继续执行。
 
-### Main-mode failure recovery
+### 4. 专项分支
 
-When `last_mode` and `last_error` indicate interrupted execution:
+- **浏览章节**：`get-knowledge-graph --graph-id GRAPH_ID [--topic-id TOPIC_ID]`；`has_more` 时用 `next_offset` 分页
+- **薄弱点报告**：`get-mastery-diagnostics --plan-id PLAN_ID [--topic-id TOPIC_ID | --concept-id CONCEPT_ID]`；shell 示例见 `SKILL.md`
+- **record 修正**：handoff 至 `quiz` / `learn` / `review`，逐条 `add-interaction-record`，禁止在 shared 批量写 record
 
-- If recoverable (missing context / validation), ask for the single missing key and retry via proper mode handoff.
-- If not recoverable, explain the constraint briefly and provide one safe next step.
+## 停止条件
 
-### Record correction
+| 场景 | 处理 |
+| --- | --- |
+| discovery 为空 | 说明无可用图谱/plan，请用户先 ingest |
+| 用户未选择 plan/graph 或 mode | 停留 shared，再问一题 |
+| 主 mode 不可恢复失败 | 简述约束，给一条安全 `next_step` |
 
-When the user wants to fix or backfill mastery / quiz / learn records:
+## 下一步调整
 
-1. Run discovery if `plan_id` is missing (steps 1–2 above).
-2. Identify the target mode (`quiz` for test outcomes, `learn` for teaching/check outcomes, `review` for review outcomes).
-3. Hand off to that mode contract; write **one record per judged item** via `add_interaction_record` (CLI loop), not conversation-only updates.
-4. Verify with `list-learning-plans` and confirm `progress.records_by_mode` counts match expectations.
-5. Return `summary` + `next_step` to continue in the target mode or router.
-
-### Mastery / weak-point report
-
-When the user wants diagnostics (weak concepts, chapter-level performance, mastery summary) rather than starting learn/quiz/review:
-
-1. Run discovery if `plan_id` is missing (steps 1–2 above); have the user confirm the target **plan**.
-2. Optional narrowing: user names a chapter → resolve `topic_id`; names a concept → resolve `concept_id` (diagnostics expands `part_of` sub-concepts automatically).
-3. Invoke **`get-mastery-diagnostics`** from the skill repo root (exact shell in `../SKILL.md`); read `by_topic`, `by_concept`, `ranked_weak_concepts`, and `summary`.
-4. Present a concise human-readable report; set `next_step` to `review` (due/weak queue), `learn` (conceptual gaps), or `quiz` (verification), with `plan_id` and optional scope ids.
-
-Do not query SQLite or guess schema/table names in this scenario.
-
-### Mastery / weak-point report
-
-When the user wants diagnostics (not a live review/quiz session):
-
-1. Run discovery if `plan_id` is missing (steps 1–2 above); have the user confirm the target **plan**.
-2. If they name a chapter or concept, note `topic_id` or `concept_id` for scope (concept scope includes all `part_of` sub-concepts under that anchor).
-3. Invoke **`get-mastery-diagnostics`** from the skill repo root (exact shell in `../SKILL.md`); read `by_topic`, `by_concept`, `ranked_weak_concepts`, and `summary`.
-4. Present a concise human-readable report from that JSON only; do not query SQLite or guess schema.
-5. Return `mode="shared"`, `summary`, and `next_step` pointing to `review` (due/weak queue), `learn` (concept gaps), or `quiz` (verification), as appropriate.
-
-### Long-tail API or tooling question
-
-If the user asks for a small operation not covered by the main modes, run `list_apis()` + `get_api_spec()` once (API `name` values are kebab-case, same as `list-apis` output), then recommend 1 next hop and ask for confirmation.
-
-## Output (minimal)
-
-- Always output `KnowledgeGraphs` and `PendingLearningPlans` tables first.
-- Ask exactly one question: choose **plan** or **graph** first (not mode first).
-- Required output fields: `mode="shared"`, `clarification_question`, `discovery_snapshot.source="api_discovery"`, `knowledge_graphs_table`, `pending_learning_plans_table`, `summary`, `next_step`.
+- 澄清完成 → 进入所选 mode 文档第一步
+- 薄弱点报告后 → `review`（due/薄弱）、`learn`（概念缺口）、`quiz`（验证）
+- 每轮返回 `mode: shared`、`summary`、`next_step`

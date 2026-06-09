@@ -12,6 +12,8 @@ from scripts.knowledge_graph import api as kg_api
 from scripts.knowledge_graph.store import (
     collect_concept_ids_with_descendants,
     collect_topic_ids_with_descendants,
+    get_next_sibling_topic_id,
+    list_scope_concepts_ordered,
     resolve_scope_concepts,
 )
 from scripts.learning.session import add_interaction_record as append_record_impl
@@ -231,6 +233,134 @@ def _resolve_plan_scope(plan_id: str, topic_id: str | None) -> dict[str, Any]:
     return {"topic_ids": topic_ids} if topic_ids else {}
 
 
+LEARN_CONCEPT_LIMIT_DEFAULT = 200
+
+
+def _fetch_recent_learn_concepts(plan_id: str, limit: int = 5) -> list[str]:
+    rows = query_all(
+        """
+        SELECT lr.conceptId AS concept_id
+        FROM LearningRecord lr
+        JOIN LearningSession ls ON ls.sessionId = lr.sessionId
+        WHERE ls.learningPlanId = ? AND lr.recordType = 'learn'
+        ORDER BY lr.occurredAt DESC, lr.createdAt DESC
+        LIMIT ?
+        """,
+        (plan_id, limit),
+    )
+    return [row["concept_id"] for row in rows if row.get("concept_id")]
+
+
+def _fetch_learned_exposure_concept_ids(plan_id: str) -> list[str]:
+    rows = query_all(
+        """
+        SELECT conceptId AS concept_id
+        FROM LearnerConceptState
+        WHERE learningPlanId = ? AND learnCount >= 1
+        """,
+        (plan_id,),
+    )
+    return [row["concept_id"] for row in rows if row.get("concept_id")]
+
+
+def _fetch_plan_topic_ids(plan_id: str) -> list[str]:
+    rows = query_all(
+        """
+        SELECT lpt.topicId AS topic_id
+        FROM LearningPlanTopic lpt
+        JOIN Topic t ON t.topicId = lpt.topicId
+        WHERE lpt.learningPlanId = ?
+        ORDER BY t.sortOrder ASC, t.topicId ASC, lpt.createdAt ASC
+        """,
+        (plan_id,),
+    )
+    return [row["topic_id"] for row in rows if row.get("topic_id")]
+
+
+def get_learn_context_data(
+    plan_id: str,
+    topic_id: str | None = None,
+    concept_limit: int = LEARN_CONCEPT_LIMIT_DEFAULT,
+    offset: str | None = None,
+) -> dict[str, Any]:
+    plan = query_one(
+        """
+        SELECT learningPlanId AS plan_id, graphId AS graph_id, goalType AS goal_type, status
+        FROM LearningPlan WHERE learningPlanId = ?
+        """,
+        (plan_id,),
+    )
+    if not plan:
+        return {"error": "plan_not_found", "plan_id": plan_id}
+
+    graph_id = plan["graph_id"]
+    scope = _resolve_plan_scope(plan_id, topic_id)
+    ordered_scope = dict(scope)
+    if scope.get("topic_ids"):
+        ordered_scope["topic_ids"] = collect_topic_ids_with_descendants(
+            graph_id, scope["topic_ids"]
+        )
+
+    ordered_pack = list_scope_concepts_ordered(
+        graph_id,
+        ordered_scope,
+        concept_limit=concept_limit,
+        offset=offset,
+    )
+    concept_briefs = ordered_pack.get("concept_briefs") or []
+    concept_ids = [item["concept_id"] for item in concept_briefs if item.get("concept_id")]
+    relation_scope = {"concept_ids": concept_ids} if concept_ids else scope
+    relation_pack = kg_api.get_concept_relations(graph_id, relation_scope, depth=1, relation_limit=30)
+    evidence_pack = kg_api.get_concept_evidence(graph_id, relation_scope, mode="summary", evidence_limit=20)
+
+    state_summary = query_all(
+        """
+        SELECT masteryLevel AS mastery_level, COUNT(*) AS count
+        FROM LearnerConceptState
+        WHERE learningPlanId = ?
+        GROUP BY masteryLevel
+        """,
+        (plan_id,),
+    )
+    task_summary = query_all(
+        """
+        SELECT taskType AS task_type, COUNT(*) AS count
+        FROM LearningTask
+        WHERE learningPlanId = ? AND status = 'pending'
+        GROUP BY taskType
+        """,
+        (plan_id,),
+    )
+
+    plan_topic_ids = _fetch_plan_topic_ids(plan_id)
+    active_topic_id = topic_id
+    if not active_topic_id and scope.get("topic_ids"):
+        active_topic_id = scope["topic_ids"][0]
+    if not active_topic_id and plan_topic_ids:
+        active_topic_id = plan_topic_ids[0]
+
+    return {
+        "goal_summary": {"goal_type": plan["goal_type"], "plan_status": plan["status"]},
+        "state_summary": state_summary,
+        "task_summary": task_summary,
+        "concept_scope": scope,
+        "graph_id": graph_id,
+        "ordered_concepts": concept_briefs,
+        "concept_pack_brief": {
+            "concepts": concept_briefs,
+            "relations": relation_pack.get("relation_briefs", []),
+            "evidence": evidence_pack.get("evidence_summary", []),
+            "has_more": ordered_pack.get("has_more", False),
+            "next_offset": ordered_pack.get("next_offset"),
+            "total_in_scope": ordered_pack.get("total_in_scope", len(concept_briefs)),
+        },
+        "recent_learn_concepts": _fetch_recent_learn_concepts(plan_id),
+        "learned_exposure_concept_ids": _fetch_learned_exposure_concept_ids(plan_id),
+        "plan_topic_ids": plan_topic_ids,
+        "active_topic_id": active_topic_id,
+    }
+
+
 def get_learning_context(plan_id: str, topic_id: str | None = None) -> dict[str, Any]:
     plan = query_one(
         """
@@ -279,6 +409,7 @@ def get_learning_context(plan_id: str, topic_id: str | None = None) -> dict[str,
 
 def get_quiz_context(plan_id: str, topic_id: str | None = None) -> dict[str, Any]:
     learning_context = get_learning_context(plan_id, topic_id=topic_id)
+    recent_learn_concepts = _fetch_recent_learn_concepts(plan_id)
     performance = query_all(
         """
         SELECT
@@ -295,6 +426,7 @@ def get_quiz_context(plan_id: str, topic_id: str | None = None) -> dict[str, Any
     return {
         "quiz_scope": learning_context.get("concept_scope", {}),
         "history_performance_summary": performance,
+        "recent_learn_concepts": recent_learn_concepts,
         "difficulty_hint": "mix easy-medium-hard with focus on weak concepts",
         "constraints": {"max_question_count": 10},
         "detail": {"concept_pack_brief": learning_context.get("concept_pack_brief", {})},

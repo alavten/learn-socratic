@@ -1,57 +1,336 @@
-# Doc Socratic Learning — 架构设计文档
+# learn-socratic — 架构设计文档
+
+本文档为 learn-socratic 技能的**唯一权威设计说明**，对齐 [`skills/docs/ai-agent-skill-design-template.md`](../../docs/ai-agent-skill-design-template.md) 的 L1–L5 分层。模式执行契约以 `references/<mode>.md` 为准；本文不重复各 mode 的五节步骤全文。
 
 ---
 
-## 1. 概要架构设计
+## 1. 目标与范围
 
-本技能采用“**知识图谱域 + 学习域 + 编排层**”的最小职责划分：知识图谱域负责内容与证据治理，学习域负责计划/记录/状态/任务，编排层负责向 AI Agent 暴露统一接口并串联流程。跨域衔接以 `graph_id` 与 `concept_id` 为主键锚点。
+### 1.1 Skill 基本信息
 
-### 1.1 子系统与职责
+```yaml
+---
+name: learn-socratic
+description: Socratic learning from documents with graph ingest plus a learn/quiz/review loop, mastery tracking, spaced scheduling, and variant quizzing. Use when users ask to study, teach me, test me, review, memorize, make flashcards, or prep for exams.
+---
+```
 
-| 模块 / 组件             | 职责                                                                                               | 典型载体 / 产物                                                                                       |
-| ----------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **路由与工作流组件**    | 基于用户意图完成模式路由（ingest/learn/quiz/review）与工作流分发；仅定义流程，不直接读写业务存储。 | `SKILL.md`、`references/*.md`                                                                              |
-| **应用编排与 API 组件** | 对外暴露统一 API，编排业务模块调用，做入参校验与提示词文本封装。                                   | `orchestration_app_service`、`list_apis/get_api_spec`                                                 |
-| **知识图谱模块**        | 负责图谱入库、概念/关系/证据治理与通用查询，提供学习域所需图谱材料。                               | `Graph`、`Topic`、`Concept`、`TopicConcept`、`ConceptRelation`、`Evidence`、`RelationEvidence`        |
-| **学习模块**            | 负责学习计划、学习记录、状态快照与任务调度，并聚合学习/测验/复习上下文。                           | `Learner`、`LearningPlan`、`LearningSession`、`LearningRecord`、`LearnerConceptState`、`LearningTask` |
+- **CLI 入口**：`cd <skill-repo-root> && python -m scripts.cli.main <subcommand> …`
+- **Python 入口**：`from scripts.app import create_app`
 
-### 1.2 架构边界与协作原则
+### 1.2 适用场景
 
-1. **AI Agent 决策，脚本层供数**：模式选择、讲解策略、题目生成由 AI Agent + LLM 负责；脚本层仅提供结构化数据与记录写入能力。
-2. **编排层不承载业务聚合**：`orchestration_app_service` 只做接口封装、参数校验、模块编排与提示词文本封装。
-3. **知识图谱域保持通用语义**：仅提供图谱入库与通用查询（concept/relation/evidence），不暴露学习语义方法。
-4. **学习域负责场景聚合**：学习/测验/复习上下文由学习域聚合后输出，控制粒度为 Concept 级 + Summary。
+- **主要用户**：自学者、备考者、资料维护者（导入/修订知识图谱）
+- **核心任务**：资料结构化入图 → 苏格拉底式讲解 → 测验 → 间隔复习；掌握度诊断与薄弱点分析
+- **交互模式**：`ingest` / `learn` / `quiz` / `review`（`shared` 仅澄清与恢复）
+- **非目标范围**：文档 OCR/切片/抽取（由 Agent 调 LLM 完成）；对话长期记忆与上下文裁剪（由宿主 Agent 承担）；通用 RAG 检索服务
 
-### 1.3 端到端闭环（含资料入图）
+### 1.3 设计原则
 
-1. **资料进入图谱**：AI Agent 调用 LLM 完成解析/切片/OCR，向知识图谱域提交结构化结果（concept/relation/evidence/topic）。
-2. **图谱校验与持久化**：知识图谱域执行录入校验并写入 SQLite，形成可用 `graph` 版本增量。
-3. **建立或扩展学习计划**：学习域基于 `graph_id` 创建计划，或按进展增量加入 `topic` 范围。
-4. **发起学习交互**：学习域基于 plan/topic 聚合上下文（调用图谱通用查询），编排层封装提示词文本交给 AI Agent。
-5. **记录与状态更新**：交互完成后写入 `LearningRecord`，并更新 `LearnerConceptState` 与 `LearningTask`。
-6. **反馈反哺图谱**：学习过程中暴露的缺失概念、关系冲突、证据不足，回流为新一轮图谱补录输入，进入下一轮闭环。
+1. **Agent 决策，分层定形**：路由、教学法与生成由 Agent 负责；可调用能力与参数契约由 L2（CLI + `API_SPECS`）定义；轮次输出字段由 L1 约定。
+2. **CLI 薄层，域模块供数**：`scripts/cli/main.py` 暴露子命令；业务规则在 L4 域模块；`prompt_templates` 仅组装提示词结构，不承载 L1 轮次语义。
+3. **业务能力模块化**：`knowledge_graph`、`learning`、`orchestration` 解耦；新增 API = `API_SPECS` 条目 + 域实现 + 可选 CLI 子命令。
+4. **索引与语料**：本技能**不设** L3 `references/docs/` 语料层；动态语料来自入库图谱查询，静态方法论嵌入 `prompt_templates`。
+5. **上下文最小充分**：列表 API 返回 `limit` / `offset` / `has_more`；Agent 每轮返回 `summary` + `next_step`。
+6. **学习遥测门禁**（本技能特有）：`learn` / `quiz` / `review` 每判定一题须 `add-interaction-record` 成功后再推进队列或切换 mode（见 `SKILL.md` Session Guardrails）。
 
-### 1.4 方法论思想概要
+### 1.4 指导思想
 
-本项目的方法论核心是“**理解-表达-检验-复习**”的认知闭环，强调学习质量而非仅完成流程：
+本技能服务于「文档驱动的概念学习」业务域，方法论核心是**理解—表达—检验—复习**闭环：
 
-1. **SOLO 递进（认知复杂度）**：问题从单点识别逐步提升到关系整合与抽象迁移，确保学习不是停留在记忆层，而是走向结构化理解与可迁移应用。
-2. **UBD 反向设计（理解证据）**：先定义“学会后的可观察证据”，再设计提问与反馈。反馈不只判断对错，还关注是否能解释、阐释、应用与自我反思。
-3. **费曼学习法（输出驱动理解）**：通过“用自己的话解释 + 举例 + 纠错重述”暴露知识盲点，把“听懂”转化为“能讲清、能教会”。
-4. **检索练习与变式练习**：采用单题循环与多题型变式，强化主动回忆与情境迁移，降低“看起来会、独立不会”的错觉。
-5. **间隔复习（遗忘曲线对齐）**：按掌握度和遗忘风险动态安排复习时机，复习顺序优先弱点与到期项，形成持续巩固机制。
-6. **元认知校准**：定期进行“把握度-结果”对比与错因归类，帮助学习者校准自我判断，持续优化学习策略。
+1. **SOLO 递进**：测验问题从单点识别递进到关系整合与抽象迁移（由 `prompt_templates` 在 quiz 模式注入）。
+2. **UBD 反向设计**：反馈关注可观察的理解证据（解释、阐释、应用），而非仅对错。
+3. **费曼学习法**：learn 模式强调讲解 → 学习者复述 → 诊断缺口 → 简化重述。
+4. **检索与变式练习**：quiz 先问后评；同一概念可轮换题型降低识别偏倚。
+5. **间隔复习**：review 队列按逾期、遗忘风险、薄弱点加权排序（`learning/api.get_review_context` + `session_state.prepare_review_session_state`）。
+6. **元认知校准**：`get-mastery-diagnostics` 对比掌握度与历史表现，支撑复习/再学决策。
 
 ---
 
-## 2. 数据模型（概念）
+## 2. 概要设计
 
-与 `[data-model-design.md](data-model-design.md)` 一致：知识图谱域刻画「学什么、如何组织与溯源」；学习域刻画「谁在学、学得怎样、下一步做什么」。以下仅列概念职责与关键锚点，属性与枚举以数据模型文档为准。
+### 2.1 统一逻辑分层（L1–L5）
 
-命名约定说明：
+| 逻辑层 | 主要实现载体 | learn-socratic 映射 |
+| ------ | ------------ | ------------------- |
+| **L1 导航层** | `SKILL.md`、`references/<mode>.md`、`references/shared.md` | 意图路由、Session Guardrails、各 mode 五节契约（适用场景/前置输入/执行步骤/停止条件/下一步调整） |
+| **L2 CLI 层** | `scripts/cli/main.py`、`orchestration/orchestration_app_service.py`（`API_SPECS`）、`prompt_templates.py`、`session_state.py` | 能力发现、子命令执行、提示词与会话队列组装；**无** `regist.py` / 统一 `exec --method`（与通用模板等价能力由 `API_SPECS` + 具名子命令提供） |
+| **L3 文档资料层** | `references/docs/<slice>/` | **未实现**；不入库静态讲义，学习材料来自 SQLite 图谱 |
+| **L4 工具层** | `scripts/knowledge_graph/`、`scripts/learning/`、`scripts/orchestration/` | 图谱治理、学习计划/记录/状态/任务、编排门面 |
+| **L5 状态层** | `~/.alavten/data/knowledge/knowledge_v1.sqlite3`（`scripts/foundation/storage.py`） | Graph / Plan / Record / State / Task 持久化 |
 
-- 数据模型文档中的实体属性沿用其规范命名（包含既有 camelCase 字段）。
-- API 发现层 `name`（`list-apis` / `get-api-spec`）使用 **kebab-case**；JSON 载荷与模式文档字段仍使用 **snake_case**（`graph_id`、`plan_id` 等）。
+```mermaid
+flowchart TB
+  subgraph L1 [L1_Navigation]
+    SKILL[SKILL.md]
+    Refs[references/*.md]
+  end
+  subgraph L2 [L2_CLI]
+    CLI[cli/main.py]
+    Orch[orchestration_app_service]
+    Prompt[prompt_templates.py]
+    Session[session_state.py]
+  end
+  subgraph L4 [L4_Domain]
+    KG[knowledge_graph/]
+    Learn[learning/]
+  end
+  subgraph L5 [L5_State]
+    DB[(SQLite)]
+  end
+  Agent --> SKILL --> Refs
+  Agent --> CLI --> Orch
+  Orch --> Session --> Prompt
+  Orch --> KG --> DB
+  Orch --> Learn --> DB
+```
+
+### 2.2 核心流程
+
+```mermaid
+sequenceDiagram
+  actor User as User
+  participant Agent as Agent
+  participant L1 as L1_Navigation
+  participant CLI as L2_cli
+  participant Orch as orchestration_app_service
+  participant L4 as L4_Domain
+  participant L5 as L5_SQLite
+
+  User->>Agent: 学习/导入/测验/复习诉求
+  Agent->>L1: 选定 mode（ingest/learn/quiz/review/shared）
+  Agent->>CLI: list-apis / get-api-spec（首次或歧义时）
+  alt ingest
+    Agent->>CLI: ingest-knowledge-graph
+    CLI->>Orch: ingest_knowledge_graph
+    Orch->>L4: knowledge_graph.ingest
+    L4->>L5: 写入 Graph/Concept/Topic/...
+  else learn_quiz_review
+    Agent->>CLI: get-mode-context --mode M
+    CLI->>Orch: get_*_context
+    Orch->>L4: learning + knowledge_graph 查询
+    Orch->>Orch: session_state.prepare_*_session_state
+    Orch-->>Agent: prompt_text + context_summary
+    Agent->>User: 交互（LLM 生成讲解/题目/复习）
+    User-->>Agent: 学习者回答
+    Agent->>CLI: add-interaction-record
+    CLI->>Orch: add_interaction_record
+    Orch->>L4: learning.session + state + tasking
+    L4->>L5: LearningRecord / State / Task
+  end
+  Agent-->>User: mode + summary + next_step
+```
+
+端到端闭环：Agent/LLM 抽取结构化 payload → ingest 校验入图 → create/extend learning plan → get-mode-context 拉取上下文 → 交互 → add-interaction-record 更新掌握与调度 → 可选 get-mastery-diagnostics 报告。
+
+---
+
+## 3. 路由与模式（L1）
+
+### 3.1 SKILL 路由规则
+
+- **路由职责**：`SKILL.md` 定义 Intent Matrix、Session Guardrails、CLI 白名单；切换 mode 须先回 L1 重判。
+- **索引路由**：无 `references/docs/indexes/content-index.md`；资料意图通过 `list-knowledge-graphs` / `get-knowledge-graph` 满足。
+- **路由约束**：意图明确时直达 `references/<mode>.md`；冲突或缺上下文时进入 `references/shared.md` 一轮澄清后 handoff。
+
+| 目标 mode | 关键词（示例） | 目标文档 | 前置条件 |
+| --------- | -------------- | -------- | -------- |
+| `ingest` | import, build graph, 章节顺序, reorder | `references/ingest.md` | `graph_id` + `structured_payload` |
+| `learn` | teach me, learn, 讲解 | `references/learn.md` | `plan_id` |
+| `quiz` | quiz, test me, 一题一题, 批量测验 | `references/quiz.md` | `plan_id` |
+| `review` | review, recap, due | `references/review.md` | `plan_id` |
+| `shared` | 意图冲突、薄弱点报告、缺 plan/graph | `references/shared.md` | — |
+
+### 3.2 ingest 模式（`references/ingest.md`）
+
+- **适用场景**：导入或更新知识图谱；一书一图、按章增量（`SKILL.md` Guardrails）；书序修正经 `reorder-graph-topics` 子流程（已合并进 ingest 契约，无独立 `reorder-topics.md`）。
+- **成功标准**：`validation_summary.ok=true`。
+- **权威契约**：`references/ingest.md`。
+
+### 3.3 learn 模式（`references/learn.md`）
+
+- **适用场景**：苏格拉底式讲解与带学。
+- **成功标准**：讲授 `session_queue.current_item.concept_id` 且相关 record 已写入。
+- **权威契约**：`references/learn.md`。
+
+### 3.4 quiz 模式（`references/quiz.md`）
+
+- **适用场景**：测验与掌握度检查；`quiz_pacing` 为 `per_concept` 或 `per_chapter`（脚本解析 `pacing_hint` / 近期 learn 粒度）。
+- **成功标准**：每道已判定题各一条 `add_interaction_record`；`per_chapter` 时 `record_summary.written == expected`。
+- **权威契约**：`references/quiz.md`。
+
+### 3.5 review 模式（`references/review.md`）
+
+- **适用场景**：间隔重复与薄弱巩固。
+- **成功标准**：队列头概念完成复习且 record 已写入。
+- **权威契约**：`references/review.md`。
+
+### 3.6 shared 模式（`references/shared.md`）
+
+- **职责**：`list-apis` / `get-api-spec` 发现；`list-knowledge-graphs` + `list-learning-plans` 双表澄清；Mode 选择表 handoff 至主 mode。**不**批量写 learning record。
+
+### 3.7 轮次输出约定（L1）
+
+| field | required | 说明 |
+| ----- | -------- | ---- |
+| `mode` | yes | 当前 mode |
+| `summary` | yes | 本轮摘要 |
+| `next_step` | yes | 下一步建议 |
+| `quiz_pacing` | quiz | `per_concept` \| `per_chapter` |
+| `record_summary` | quiz（有判定时） | `{ expected, written, failed }` |
+| `validation_summary` | ingest | 入库校验结果 |
+| `context_summary` | learn/quiz/review（CLI） | 含 `session_queue`、`next_session_context` |
+
+列表类 payload 须含 `has_more` / `next_offset`（如图谱分页）。
+
+---
+
+## 4. CLI 层（L2）
+
+### 4.1 角色定位
+
+| 职责 | 载体 | 说明 |
+| ---- | ---- | ---- |
+| API 注册与自描述 | `orchestration_app_service.API_SPECS` | 与 `list-apis` / `get-api-spec` 同源 |
+| CLI 暴露 | `scripts/cli/main.py` | 具名子命令（非模板 `exec --method`） |
+| 提示词组装 | `prompt_templates.build_prompt` | learn/quiz/review 教学法提示 |
+| 会话状态 | `session_state.py` | 队列、pacing、重试状态 |
+
+与通用模板等价关系：`API_SPECS` ≈ `_METHOD_REGISTRY`；`python -m scripts.cli.main <cmd>` ≈ `exec --method`。
+
+### 4.2 能力发现
+
+```bash
+python -m scripts.cli.main list-apis
+python -m scripts.cli.main get-api-spec --api-name <kebab-case-name>
+```
+
+- API `name` 为 **kebab-case**（如 `create-learning-plan`）；JSON 字段为 **snake_case**（`graph_id`、`plan_id`）。
+- 无 `references/docs/indexes/content-index.md`。
+
+### 4.3 CLI 子命令表
+
+| 子命令 | 对应 API（kebab） | 说明 |
+| ------ | ----------------- | ---- |
+| `list-apis` | `list-apis` | 可调用 API 列表 |
+| `get-api-spec` | `get-api-spec` | 入参 JSON Schema |
+| `list-knowledge-graphs` | `list-knowledge-graphs` | 图谱元数据分页 |
+| `get-knowledge-graph` | `get-knowledge-graph` | 结构 + concept briefs |
+| `ingest-knowledge-graph` | `ingest-knowledge-graph` | 结构化入图 |
+| `reorder-graph-topics` | `reorder-graph-topics` | 兄弟 topic 排序 |
+| `remove-knowledge-graph-entities` | `remove-knowledge-graph-entities` | 实体删除（含依赖检查） |
+| `list-learning-plans` | `list-learning-plans` | 学习计划列表 |
+| `create-learning-plan` | `create-learning-plan` | 创建计划 |
+| `extend-learning-plan-topics` | `extend-learning-plan-topics` | 扩展 plan 主题范围 |
+| `get-mode-context` | `get-learn-context` / `get-quiz-context` / `get-review-context` | `--mode learn\|quiz\|review` |
+| `get-mastery-diagnostics` | `get-mastery-diagnostics` | 掌握度/薄弱点报告 |
+| `add-interaction-record` | `add-interaction-record` | 写入 learn/quiz/review 记录 |
+
+**仅 Python、无 CLI**：`get_discovery_context`（`create_app().get_discovery_context()`）。
+
+### 4.4 API 注册（`API_SPECS` 全量）
+
+| API name（kebab） | summary | tags |
+| ----------------- | ------- | ---- |
+| `list-apis` | List callable APIs | meta |
+| `get-api-spec` | Get API input schema | meta |
+| `list-knowledge-graphs` | List graph metadata | kg |
+| `get-knowledge-graph` | Get graph structure and concept briefs | kg |
+| `ingest-knowledge-graph` | Ingest structured graph payload | kg, write |
+| `remove-knowledge-graph-entities` | Remove graph entities | kg, write |
+| `reorder-graph-topics` | Reorder sibling topics | kg, write |
+| `list-learning-plans` | List learning plans | learning |
+| `get-discovery-context` | Discovery tables for shared mode | learning, meta |
+| `create-learning-plan` | Create learning plan | learning, write |
+| `extend-learning-plan-topics` | Extend plan topics | learning, write |
+| `get-learn-context` | Build learning prompt from context | learning, prompt |
+| `get-quiz-context` | Build quiz prompt from context | learning, prompt |
+| `get-review-context` | Build review prompt from context | learning, prompt |
+| `get-mastery-diagnostics` | Mastery and weak-point diagnostics | learning, read |
+| `add-interaction-record` | Commit a learning record | learning, write |
+
+**代表 payload（其余以 `get-api-spec` 为准）**
+
+`ingest-knowledge-graph`：`graph_id` + 内层 `structured_payload`（禁止 `{graph_id, structured_payload}` 包装）；返回 `validation_summary`、`version`、`change_summary`。
+
+`get-mode-context --mode learn`：返回 `prompt_text`、`context_summary.session_queue.current_item`、`next_session_context`。
+
+`add-interaction-record`：`record_payload` 必填 `concept_id`；`result` 与 `score` 须一致（`blocked` ≤0.35，`partial` ≤0.55，由 `learning/validation.py` 校验）。
+
+### 4.5 会话状态与 quiz pacing（`session_state.py`）
+
+- `prepare_learn_session_state`：书序概念队列、章节进度、`suggested_plan_action`（`extend_learning_plan_topics`）。
+- `prepare_quiz_session_state`：调用 `resolve_quiz_pacing(session_context, recent_learn_granularity=infer_learn_granularity(...))`。
+- `prepare_review_session_state`：候选概念加权队列、`served_concept_ids`、一次错题重试。
+- `session_context` 常用字段：`served_concept_ids`、`last_completed_concept_id`、`last_result`、`quiz_pacing`、`pacing_hint`、`batch_size`、`pending_items`。
+
+---
+
+## 5. 文档资料层（L3）
+
+本技能**不维护** `references/docs/` 静态语料 slice。
+
+| 需求 | 替代路径 |
+| ---- | -------- |
+| 概念定义与证据 | `get-knowledge-graph` / `get_learn_context` 内嵌的 `concept_pack_brief` |
+| 教学法（SOLO/UBD/费曼） | `prompt_templates.py` |
+| 用户文档 | `README.md`（用户向）；本文件（维护者向） |
+
+---
+
+## 6. 工具层（L4）
+
+### 6.1 `knowledge_graph/`
+
+| 模块 | 职责 |
+| ---- | ---- |
+| `api.py` | `list_knowledge_graphs`、`get_knowledge_graph`、`get_concepts`、`get_concept_relations`、`get_concept_evidence`、`ingest_knowledge_graph`、`reorder_graph_topics` |
+| `ingest.py` | 结构化 payload 合并写入 |
+| `validate.py` | 录入校验（含 wrapped payload 拒绝、relation evidence、`sort_order` 连续） |
+| `store.py` | SQLite 访问、topic 排序归一化 |
+| `reorder.py` | 兄弟节点完整集合重排 |
+
+### 6.2 `learning/`
+
+| 模块 | 职责 |
+| ---- | ---- |
+| `api.py` | 计划 CRUD、`get_*_context`、`get_mastery_diagnostics`、`add_interaction_record` 门面 |
+| `session.py` | `LearningSession` / `LearningRecord` 写入 |
+| `state.py` | `LearnerConceptState` 更新 |
+| `tasking.py` | `LearningTask` 生成与重排 |
+| `validation.py` | `record_payload` 与 plan/concept 归属校验 |
+
+### 6.3 `orchestration/`
+
+| 模块 | 职责 |
+| ---- | ---- |
+| `orchestration_app_service.py` | `OrchestrationAppService`、`API_SPECS`、payload 校验、域调用编排 |
+| `prompt_templates.py` | `build_prompt(mode, context)` |
+| `session_state.py` | learn/quiz/review 会话队列与 pacing |
+
+### 6.4 `foundation/`
+
+- `storage.py`：迁移、`query_*`、`transaction`；默认库路径 `Path.home() / ".alavten/data/knowledge/knowledge_v1.sqlite3"`，环境变量 `DOC_SOCRATIC_DB_PATH` 可覆盖。
+- `logger.py`：结构化流程日志。
+
+---
+
+## 7. 状态与持久化（L5）
+
+### 7.1 设计原则
+
+1. **稳定标识 + 状态演进**：实体稳定 ID，变化落在状态表与 `dr` 版本字段。
+2. **局部演进优先**：按 `graph_id` 增量 ingest，不要求整库单版本发布。
+3. **双时间语义**：`TopicConcept.validFrom/validTo` 与记录 `occurredAt` 并存。
+4. **证据可追溯**：关键 `ConceptRelation` 须关联 `RelationEvidence`。
+5. **可解释推荐**：`LearningTask` 可回溯 `LearnerConceptState` 与学习记录。
+
+### 7.2 命名约定
+
+- **SQLite / ER 属性**：camelCase（如 `graphId`、`learningPlanId`）— 仅在本节 ER 与 schema 讨论中使用。
+- **API / CLI / references**：snake_case（`graph_id`、`plan_id`）。
+
+### 7.3 知识图谱域 ER
 
 ```mermaid
 erDiagram
@@ -63,6 +342,56 @@ erDiagram
     ConceptRelation ||--o{ RelationEvidence : supportedBy
     Evidence ||--o{ RelationEvidence : supports
 
+    Graph {
+        string graphId PK
+        string parentGraphId FK
+        string graphType
+        string graphName
+        int revision
+        string status
+    }
+    Topic {
+        string topicId PK
+        string graphId FK
+        string parentTopicId FK
+        string topicType
+        int sortOrder
+    }
+    Concept {
+        string conceptId PK
+        string graphId FK
+        string canonicalName
+        string difficultyLevel
+        boolean dr
+    }
+    ConceptRelation {
+        string conceptRelationId PK
+        string fromConceptId FK
+        string toConceptId FK
+        string relationType
+    }
+    Evidence {
+        string evidenceId PK
+        string quoteText
+        string locator
+    }
+```
+
+**核心实体职责**
+
+| 实体 | 职责 |
+| ---- | ---- |
+| `Graph` | 图谱治理容器；`parentGraphId` 可选（遗留多图模式）；全书默认单一 `graph_id` |
+| `Topic` | 章节目录树；`topic_type`: `chapter` / `section` |
+| `Concept` | 可学习语义节点；`dr=0` 为当前版本 |
+| `TopicConcept` | Topic 与 Concept 的 N:M 映射与 `rank` |
+| `ConceptRelation` | 前置、组成、对比等语义边 |
+| `Evidence` / `RelationEvidence` | 关系证据链 |
+
+### 7.4 学习域 ER
+
+```mermaid
+erDiagram
     Learner ||--o{ LearningPlan : owns
     Graph ||--o{ LearningPlan : boundBy
     LearningPlan ||--o{ LearningSession : has
@@ -70,466 +399,113 @@ erDiagram
     LearningPlan ||--o{ LearnerConceptState : tracks
     LearningPlan ||--o{ LearningTask : schedules
     Concept ||--o{ LearningRecord : referencedBy
-    Concept ||--o{ LearnerConceptState : referencedBy
-    Concept ||--o{ LearningTask : referencedBy
+
+    LearningPlan {
+        string learningPlanId PK
+        string graphId FK
+        string goalType
+        string status
+    }
+    LearningRecord {
+        string learningRecordId PK
+        string sessionId FK
+        string conceptId FK
+        string recordType
+        string result
+        float score
+    }
+    LearnerConceptState {
+        string learningPlanId FK
+        string conceptId FK
+        string masteryLevel
+        float forgettingRisk
+        datetime nextReviewAt
+    }
+    LearningTask {
+        string learningTaskId PK
+        string conceptId FK
+        float priorityScore
+        datetime dueAt
+        string status
+    }
 ```
 
-### 2.1 知识图谱域（核心实体）
+**分工**
 
-- **`Graph`**：知识体系治理容器；主图 / 子图层级、规则与增量修订锚点（如 `schemaVersion`、`revision`）。
-- **`Topic`**：章节目录树；通过 `TopicConcept` 与 `Concept` 建立 **N:M** 映射，表达某主题下概念的角色、排序与别名语境。
-- **`Concept`**：可学习的语义节点；标准名、定义、难度等；被学习域通过 `concept_id` 引用。
-- **`ConceptRelation`**：概念间语义边（前置、组成、对比等）；可经 `RelationEvidence / Evidence` 关联摘录与来源，满足可解释与证据链。
+- **记录层** `LearningRecord`：`record_type` = learn / quiz / review；append-only 事件流。
+- **状态层** `LearnerConceptState`：掌握度、遗忘风险、下次复习时间。
+- **调度层** `LearningTask`：待办队列；`list-learning-plans` 的 `pending_tasks` 计数指 Task 行数，非「待复习题数」。
 
-### 2.2 学习域（核心实体）
+辅助表：`LearningPlanTopic`（计划聚焦主题范围）。
 
-- **`Learner`**：学习主体；时区、语言等基础偏好。
-- **`LearningPlan`**：学习域聚合根；绑定 `graph_id`、周期与目标类型；下辖会话、状态快照与任务。
-- **`LearningSession`**：一次学习活动的时间与上下文边界；聚合同一轮中的多条记录。
-- **`LearningRecord`**：学习记录；`record_type`（`learn` / `quiz` / `review`）、`difficulty_bucket`、结果、分数、耗时、`occurred_at` 等；引用 `concept_id`。
-- **`LearnerConceptState`**：在 `(learner_id, learning_plan_id, concept_id)` 上的快照；`target_level` / `target_score` 与当前掌握、遗忘风险、`next_review_at` 及聚合计数（学习 / 测验 / 复习次数与难度、正误分布等）。
-- **`LearningTask`**：计划内待办（新学 / 复习等）；`priority_score`、`due_at`、`reason_type` 等，须能回溯到状态或既有学习记录。
+### 7.5 存储位置
 
-### 2.3 状态、记录与任务分工
-
-- **学习记录**：`LearningRecord`，逐条保存学习活动明细，作为掌握与调度算法的输入。
-- **聚合决策层（快照）**：`LearnerConceptState`，支撑进度解释、风险与复习建议。
-- **调度执行层（待办）**：`LearningTask`，承载优先级、截止时间与策略，由图谱结构、计划范围与状态差距共同驱动。
+| 项 | 值 |
+| -- | -- |
+| 默认库文件 | `~/.alavten/data/knowledge/knowledge_v1.sqlite3` |
+| 测试覆盖 | `DOC_SOCRATIC_DB_PATH` 指向隔离库 |
+| 迁移 | `scripts/foundation/migrations/` |
 
 ---
 
-## 3. 核心业务流程（目标态）
-
-本项目以 **AI Agent + LLM** 为核心执行体：Agent 负责模式路由、工具编排与状态提交，LLM 负责理解、生成与策略建议。以下流程按「资料解析建图 → 学习 → 测验 → 复习」展开；同一 `LearningSession` 可混排 `learn` / `quiz` / `review` 多条 `LearningRecord`。
-
-### 3.1 资料解析与知识图谱构建（时序）
-
-约束：文档解析、切片、OCR 由 **AI Agent 调用大模型**完成；本技能仅接收结构化结果（候选概念、关系、证据、主题映射）并执行入库与录入时校验治理。
-
-```mermaid
-sequenceDiagram
-  actor Author as 资料维护者
-  participant Agent as AI Agent
-  participant LLM as 大模型
-  participant Orchestrator as orchestration_app_service
-  participant KG as 知识图谱域服务
-  participant Store as 图谱存储
-
-  Author->>Agent: 提交资料（文献/讲义/网页）
-  Agent->>LLM: 执行解析/切片/OCR/抽取
-  LLM-->>Agent: 返回结构化候选结果
-  Agent->>Orchestrator: 提交结构化数据包
-  Orchestrator->>KG: ingest_knowledge_graph(graph_id, structured_payload)
-  KG->>Store: 写入 Evidence/RelationEvidence
-  KG->>Store: 写入 Topic/TopicConcept
-  KG->>KG: 执行录入时规则校验（结构/引用/证据完整性）
-  alt 校验通过
-    KG->>Store: 写入或更新 Graph 增量版本
-    KG-->>Orchestrator: 返回 graph_id/version/变更摘要
-    Orchestrator-->>Agent: 返回录入成功（graph_id/version/变更摘要）
-    Agent-->>Author: 反馈录入成功与可用版本
-  else 校验失败
-    KG-->>Orchestrator: 返回校验失败原因与修订建议
-    Orchestrator-->>Agent: 返回校验失败原因与修订建议
-    Agent-->>Author: 生成修订动作
-  end
-```
-
-### 3.2 学习业务流程（时序）
-
-```mermaid
-sequenceDiagram
-  actor User as 学习者
-  participant Agent as AI Agent
-  participant LLM as 大模型
-  participant Orchestrator as orchestration_app_service
-  participant KG as 知识图谱域服务
-  participant Learning as 学习域服务
-
-  User->>Agent: 发起学习
-  Agent->>Orchestrator: list_knowledge_graphs()
-  Orchestrator->>KG: list_knowledge_graphs()
-  KG-->>Orchestrator: graph_list
-  Orchestrator-->>Agent: graph_list
-  Agent->>Orchestrator: list_learning_plans()
-  Orchestrator->>Learning: list_learning_plans()
-  Learning-->>Orchestrator: plan_list
-  Orchestrator-->>Agent: plan_list
-  Agent-->>User: 展示图谱与计划供选择
-  User->>Agent: 选择 graph_id + plan_id/topic_id
-  alt 无现有计划
-    Agent->>Orchestrator: create_learning_plan(graph_id, topic_id)
-    Orchestrator->>Learning: create_learning_plan(graph_id, topic_id)
-    Learning-->>Orchestrator: plan_id
-  end
-  Agent->>Orchestrator: get_learn_context(plan_id, topic_id)
-  Orchestrator->>Learning: get_learning_context(plan_id, topic_id)
-  Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
-  Learning->>KG: get_concept_relations(graph_id, concept_scope, depth=1)
-  Learning->>KG: get_concept_evidence(graph_id, concept_scope, mode='summary')
-  KG-->>Learning: concept_materials(summary)
-  Learning-->>Orchestrator: learning_context
-  Orchestrator-->>Agent: learning_context
-  Agent->>LLM: 基于上下文生成讲解与追问
-  LLM-->>Agent: 教学响应
-  Agent->>Orchestrator: add_interaction_record(plan_id, mode=learn, record_payload)
-  Orchestrator->>Learning: add_interaction_record(plan_id, learn, record_payload)
-  Learning-->>Orchestrator: commit_result
-  Orchestrator-->>Agent: commit_result
-  Agent-->>User: 输出下一步学习路径
-```
-
-### 3.3 测验业务流程（时序）
-
-测验支持两种节奏（`quiz_pacing`）：`per_concept`（逐概念，默认每 turn 1 个 anchor 概念）与 `per_chapter`（按章节 scope 一轮多题）。**落库粒度不变**：每道已判定题各调用一次 `add_interaction_record(mode=quiz)`；`per_chapter` 在 turn 结束前核对 `record_summary.written == expected`。记录补写须回到 `quiz`/`learn`/`review`，不在 `shared` 批量写入。
-
-```mermaid
-sequenceDiagram
-  actor User as 学习者
-  participant Agent as AI Agent
-  participant LLM as 大模型
-  participant Orchestrator as orchestration_app_service
-  participant KG as 知识图谱域服务
-  participant Learning as 学习域服务
-
-  User->>Agent: 发起测验
-  Agent->>Orchestrator: get_quiz_context(plan_id, topic_id, session_context)
-  Orchestrator->>Learning: get_quiz_context(plan_id, topic_id)
-  Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
-  Learning->>KG: get_concept_relations(graph_id, concept_scope, depth=1)
-  Learning->>KG: get_concept_evidence(graph_id, concept_scope, mode='summary')
-  KG-->>Learning: concept_materials(summary)
-  Learning-->>Orchestrator: quiz_context
-  Orchestrator-->>Agent: quiz_context
-  Agent->>LLM: 基于 quiz_context 生成题目
-  LLM-->>Agent: 题目与作答要求
-  Agent-->>User: 出题并收集作答
-  User-->>Agent: 返回答案
-  Agent->>LLM: 判分与讲评
-  LLM-->>Agent: score/latencyMs/讲评
-  Agent->>Orchestrator: add_interaction_record(plan_id, mode=quiz, record_payload)
-  Orchestrator->>Learning: add_interaction_record(plan_id, quiz, record_payload)
-  Learning-->>Orchestrator: commit_result
-  Orchestrator-->>Agent: 测验记录提交结果
-  Agent-->>User: 解释结果并给出后续动作
-```
-
-### 3.4 复习业务流程（时序）
-
-```mermaid
-sequenceDiagram
-  actor User as 学习者
-  participant Agent as AI Agent
-  participant LLM as 大模型
-  participant Orchestrator as orchestration_app_service
-  participant KG as 知识图谱域服务
-  participant Learning as 学习域服务
-
-  User->>Agent: 发起复习
-  Agent->>Orchestrator: get_review_context(plan_id, topic_id, session_context)
-  Orchestrator->>Learning: get_review_context(plan_id, topic_id)
-  Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
-  Learning->>KG: get_concept_relations(graph_id, concept_scope, depth=1)
-  Learning->>KG: get_concept_evidence(graph_id, concept_scope, mode='summary')
-  KG-->>Learning: concept_materials(summary)
-  Learning-->>Orchestrator: review_context
-  Orchestrator->>Orchestrator: 构建session_queue与next_session_context
-  Orchestrator-->>Agent: review_context + session_queue
-  Agent-->>User: 下发复习任务与上下文
-  loop 每次复习交互(队列推进)
-    Agent->>LLM: 生成复习提问/提示/纠错解释
-    LLM-->>Agent: 复习交互内容
-    Agent->>Agent: 聚合本轮复习交互结果
-  end
-  Agent->>Orchestrator: add_interaction_record(plan_id, mode=review, record_payload)
-  Orchestrator->>Learning: add_interaction_record(plan_id, review, record_payload)
-  Learning-->>Orchestrator: commit_result
-  Orchestrator-->>Agent: 复习记录提交结果
-  Agent-->>User: 当前反馈 + 下一题(队列下一概念)
-```
-
-### 3.5 流程切换与跨流程衔接逻辑（时序）
-
-约束：本节仅保留跨流程的非业务共性能力，即 **DB 适配** 与 **日志记录**；不在此层承载审计、标识、多租户、可观测等扩展治理能力。
-
-```mermaid
-sequenceDiagram
-  actor User as 学习者
-  participant Agent as AI Agent
-  participant LLM as 大模型
-  participant Orchestrator as orchestration_app_service
-  participant KG as 知识图谱域服务
-  participant Learning as 学习域服务
-  participant Foundation as 基础技术支撑(DB适配/日志)
-
-  User->>Agent: 在同一会话切换 learn/quiz/review
-  Agent->>LLM: 基于 user_input + session_ctx 判定目标模式
-  LLM-->>Agent: target_mode 建议 + 解释
-  Agent->>Agent: 确认 target_mode + target_plan/topic
-  loop 任一模式完成一次交互
-    alt target_mode = learn
-      Agent->>Orchestrator: get_learn_context(plan_id, topic_id)
-      Orchestrator->>Learning: get_learning_context(plan_id, topic_id)
-    else target_mode = quiz
-      Agent->>Orchestrator: get_quiz_context(plan_id, topic_id, session_context)
-      Orchestrator->>Learning: get_quiz_context(plan_id, topic_id)
-    else target_mode = review
-      Agent->>Orchestrator: get_review_context(plan_id, topic_id)
-      Orchestrator->>Learning: get_review_context(plan_id, topic_id)
-    end
-    Learning->>KG: get_concepts(graph_id, concept_scope, detail='brief')
-    Learning->>KG: get_concept_relations(graph_id, concept_scope, depth=1)
-    Learning->>KG: get_concept_evidence(graph_id, concept_scope, mode='summary')
-    KG-->>Learning: context_materials(summary)
-    Learning-->>Orchestrator: mode_context
-    Orchestrator-->>Agent: mode_context
-    Agent->>LLM: 生成响应/评估建议
-    LLM-->>Agent: 候选输出
-    Agent->>Agent: 执行护栏检查(安全/事实/格式)
-    Agent->>Orchestrator: add_interaction_record(plan_id, mode, record_payload)
-    Orchestrator->>Learning: add_interaction_record(plan_id, mode, record_payload)
-    Learning->>Foundation: 通过 DB 适配持久化记录
-    Learning->>Foundation: 记录流程日志
-    Learning-->>Orchestrator: commit_result
-    Orchestrator-->>Agent: 记录提交结果
-  end
-  Agent-->>User: 输出解释 + 下一步
-```
-
----
-
-## 4. 代码结构分层（目标态）
-
-在实现仓库中，将上述流程落实为**可读的分层目录与模块边界**，便于演进与测试；层间依赖自上而下，领域层不依赖具体技能 Markdown 文件名。
-
-### 4.1 分层总览与完整目录结构
-
-| 层级                            | 典型形态                                        | 职责                                                                           |
-| ------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------ |
-| **L1 技能入口**                 | 根级 `SKILL.md`                                 | 元数据、模式路由、渐进式披露顺序。                                             |
-| **L2 模式契约**                 | `references/*.md`                                    | 新学 / 测验 / 复习的步骤与人机措辞；声明调用的运行时能力（不写死存储格式）。   |
-| **L3 编排与接口层**             | `scripts/orchestration/`                        | 承载编排应用服务与接口自描述能力（`list_apis/get_api_spec`），并协调业务模块。 |
-| **L4 业务模块（module-first）** | `scripts/knowledge_graph/`、`scripts/learning/` | 按模块组织能力：图谱治理、学习回合数据、学习记录与状态更新。                   |
-| **L5 基础技术支撑**             | `scripts/foundation/`                           | DB 适配与日志等非业务共性能力（不含模型推理）。                                |
-
-不属于脚本层的能力（由 AI Agent 或宿主环境提供）：
-
-- LLM 推理调用与模型参数调优
-- 对话长期记忆与上下文裁剪策略
-- Agent 级别的系统提示词治理与策略编排
+## 8. 目录结构
 
 ```text
-doc-socratic-learning-optimized/
-├─ SKILL.md                                   # L1 技能入口
-├─ references/                                     # L2 模式契约
+learn-socratic/
+├─ SKILL.md                              # L1
+├─ README.md                             # 用户说明
+├─ references/                           # L1 模式契约
 │  ├─ shared.md
 │  ├─ ingest.md
 │  ├─ learn.md
 │  ├─ quiz.md
 │  └─ review.md
-├─ data/                                      # 可选：本地遗留/开发用（默认库在用户目录，见下）
-│  └─ prompt-validation-runs/                # 提示词校验运行产物
-# 默认 SQLite 主库（跨平台，由 storage.default_db_path() 解析）：
-#   ~/.alavten/data/knowledge/knowledge_v1.sqlite3
-#   （及运行时 knowledge_v1.sqlite3-wal / -shm）
+├─ docs/
+│  └─ architecture-design.md             # 本文件（唯一设计文档）
 ├─ scripts/
-│  ├─ orchestration/                          # L3 编排与接口层
-│  │  ├─ orchestration_app_service.py         # 编排应用服务（含 list_apis/get_api_spec）
-│  │  ├─ prompt_templates.py                  # 提示词模板封装
-│  ├─ knowledge_graph/                        # L4 module-first: 图谱模块
-│  │  ├─ api.py                               # list_knowledge_graphs/get_knowledge_graph/get_concepts/get_concept_relations/get_concept_evidence
-│  │  ├─ ingest.py                            # 结构化数据入图
-│  │  ├─ validate.py                          # 录入时规则校验
-│  │  └─ store.py                             # 图谱存储访问
-│  ├─ learning/                               # L4 module-first: 学习模块
-│  │  ├─ api.py                               # list_learning_plans/create_learning_plan/extend_learning_plan_topics/get_*_context/add_interaction_record
-│  │  ├─ session.py                           # LearningSession/LearningRecord
-│  │  ├─ state.py                             # LearnerConceptState 更新
-│  │  └─ tasking.py                           # LearningTask 重排
-│  ├─ foundation/                             # L5 基础技术支撑
-│  │  ├─ storage.py                           # SQLite 存取适配（可扩展其他 DB）
-│  │  ├─ logger.py                            # 流程日志记录
-│  └─ app.py                                  # 启动与依赖装配
-├─ tests/
+│  ├─ cli/main.py                        # L2
+│  ├─ app.py
 │  ├─ orchestration/
-│  ├─ knowledge_graph/
-│  ├─ learning/
-│  └─ integration/
-└─ docs/
-   ├─ architecture-design.md
-   └─ data-model-design.md
+│  │  ├─ orchestration_app_service.py
+│  │  ├─ prompt_templates.py
+│  │  └─ session_state.py
+│  ├─ knowledge_graph/                   # L4
+│  ├─ learning/                          # L4
+│  └─ foundation/                        # L5 适配
+└─ tests/
+   ├─ contracts/
+   ├─ knowledge_graph/
+   ├─ learning/
+   ├─ orchestration/
+   ├─ integration/
+   └─ prompt-validation/
 ```
 
-### 4.2 路由与工作流（L1～L2）
+---
 
-- **L1 (`SKILL.md`)：技能入口与路由中枢**
-  - **技能描述职责**：定义技能目标、适用边界、默认行为（学习/测验/复习的总原则），并声明该技能依赖的运行时能力（调用 L3 接口即可，不写死内部实现）。
-  - **路由职责**：基于用户意图、会话状态与最近任务上下文，完成**模式选择与模式切换路由**（learn/quiz/review 之间切换也是 L1 路由的一部分）。
-  - **路由优先原则**：优先直接路由到 `learn.md` / `quiz.md` / `review.md`；仅在无法判定时才进入 `shared.md`。
-  - **路由规则建议（最小）**：
-    - 命中“学习/讲解/理解”意图 -> `references/learn.md`
-    - 命中“测试/检查掌握/出题”意图 -> `references/quiz.md`
-    - 命中“复习/到期/回顾”意图 -> `references/review.md`
-    - 无明确意图或冲突意图 -> `references/shared.md` 先做一次意图澄清，再回到 L1 重新分流
-    - 会话内模式切换（如 learn -> quiz -> review）-> 先走 L1 路由判定，再进入目标模式文档
-  - **约束**：`SKILL.md` 只承载“描述与路由”，不承载具体问答脚本细节（细节下沉到 L2）。
-- **L2 (`references/*.md`)：模式工作流定义**
-  - **`shared.md`（放这些）**：
-    - 跨模式公共兜底：意图澄清、上下文补齐、异常处理、重试与降级规则
-    - 跨模式公共后置：回合提交后的下一步衔接（继续学习/测验/复习）
-    - 公共最小输出壳：如 `mode`、`summary`、`next_step`（可选）
-    - 预留项声明：身份相关字段可预留为内部上下文，但当前不作为对外输入要求
-  - **`shared.md`（不放这些）**：
-    - 不承载“计划选择/确认”主流程（应由目标模式或 L1 前置决策处理）
-    - 不定义 learn/quiz/review 的具体教学步骤
-    - 不强制各模式统一细节输出格式与话术模板
-    - 不承载模式特有判分/讲评/复习策略
-    - 不直接触发业务状态写入（如 `add_interaction_record`），仅负责澄清与分流建议
-  - **`shared.md` 最小化约束**：
-    - 进入条件：仅当意图冲突、上下文缺失、或路由失败时进入
-    - 退出条件：必须在一次澄清后返回明确模式，避免常驻在 shared 流程
-    - 若长期高频触发 shared，优先把稳定规则上移到 `SKILL.md` 或下沉到具体模式文档
-  - **`learn.md`**：学习模式工作流（选择目标 -> 获取学习回合上下文 -> 讲解与追问 -> 提交回合结果 -> 输出下一步）。
-  - **`quiz.md`**：测验模式工作流（Reconcile -> 确定范围与 `quiz_pacing` -> 出题与作答 -> 逐题判分写记录 -> `record_summary` 对账 -> 给出补强建议）。
-  - **`review.md`**：复习模式工作流（读取复习任务/到期项 -> 复述或抽问 -> 记录结果 -> 更新复习队列 -> 推荐下一轮）。
-  - **文档结构建议（统一模板）**：`触发条件`、`输入`、`步骤`、`输出`、`失败重试/降级`、`下一步跳转`。其中“输出”允许各模式自定义 payload。
+## 9. 质量门禁与验收
 
-### 4.3 编排与接口层（L3）
+### 9.1 架构一致性（按层）
 
-`orchestration_app_service.py` 作为编排应用服务，由 AI Agent 在读取 L1 路由规则后按目标模式调用，并协调 L4 业务模块完成一次完整交互。各业务模块仅返回结构化数据；在编排层由 `prompt_templates` 统一封装为可直接供 AI Agent 使用的提示词文本。作为 AI Agent 的一部分，它不直接承担模型推理调用，并对外统一提供 `list_apis/get_api_spec` 的自描述接口能力。
+- [x] **L1**：`SKILL.md` + 各 `references/<mode>.md` 含五节模板；`shared.md` 含 Mode 选择表
+- [x] **L2**：`list-apis` / `get-api-spec` 与 `API_SPECS` 同源；CLI 白名单与 `main.py` 一致
+- [x] **L3**：明确无 `references/docs/`；语料来自图谱 API
+- [x] **L4**：域模块不维护平行 API 文档；校验在 `validate.py` / `validation.py`
+- [x] **L5**：实体与 SQLite schema 一致；默认库路径可测
 
-```mermaid
-sequenceDiagram
-  actor User as 用户
-  participant Agent as AI Agent
-  participant L1 as SKILL路由层
-  participant Orchestrator as orchestration_app_service
-  participant BizModules as 业务模块(learning/knowledge_graph)
-  participant Templates as prompt_templates
+### 9.2 数据与 API
 
-  User->>Agent: 用户输入
-  Agent->>L1: 读取路由规则并判定 mode
-  L1-->>Agent: route_result(mode, required_context)
-  Agent->>Orchestrator: handle_request(mode, user_input, session_ctx)
-  Orchestrator->>Orchestrator: get_api_spec(api_name)
-  Orchestrator-->>Orchestrator: input_schema
-  alt 首次学习该图谱
-    Orchestrator->>BizModules: create_learning_plan(graph_id, topic_id?)
-    BizModules-->>Orchestrator: structured_plan_data
-  else 已有学习计划
-    Orchestrator->>BizModules: get_*_context(plan_id, topic_id?)
-  end
-  BizModules-->>Orchestrator: structured_context
-  Orchestrator->>Templates: build_prompt(mode, structured_context)
-  Templates-->>Orchestrator: prompt_text
-  Orchestrator-->>Agent: prompt_text + context_summary
-  Agent->>User: 发起讲解/提问/测验/复习交互
-  User-->>Agent: 交互结果
-  Agent->>Orchestrator: add_interaction_record(plan_id, mode, record_payload)
-  Orchestrator->>BizModules: add_interaction_record(plan_id, mode, record_payload)
-  BizModules-->>Orchestrator: commit_result
-  Orchestrator-->>Agent: response_payload
-  Agent-->>User: 输出结果
-```
+- [x] 图谱实体：`Graph`、`Topic`、`Concept`、`TopicConcept`、`ConceptRelation`、`Evidence`、`RelationEvidence`
+- [x] 学习实体：`Learner`、`LearningPlan`、`LearningSession`、`LearningRecord`、`LearnerConceptState`、`LearningTask`、`LearningPlanTopic`
+- [x] 端到端流：ingest → learn → quiz → review；`session_state` pacing；ingest 内嵌 reorder
 
-- **具体职责**：
-  - 以“业务模块”抽象对接学习与图谱能力，不在编排层固化单模块语义。
-  - 获取业务模块返回的结构化数据，并通过 `prompt_templates` 组装提示词文本。
-  - 接收并持久化学习记录（learn/quiz/review），触发状态与任务更新。
-  - 依据 L3 的 `input_schema` 进行请求参数校验与基础错误返回。
-  - 保持“数据服务化”边界：不承担模型推理，仅负责数据编排与文本封装。
-- **对外方法（最小集合）**：
-  1. `list_apis()`：返回可调用 API 列表（`name`、`version`、`summary`、`tags`、`stability`）。
-  2. `get_api_spec(api_name)`：返回指定 API 的入参规范（`input_schema`）。
-  3. `list_knowledge_graphs()`：返回可用知识图谱列表（graph_id、name、revision、status）。
-  4. `get_knowledge_graph(graph_id)`：返回指定图谱内容，重点包含 `Topic` 层级结构与 `TopicConcept` 映射。
-  5. `ingest_knowledge_graph(graph_id, structured_payload)`：接收结构化图谱数据包并执行录入（含规则校验与增量更新）。
-  6. `list_learning_plans()`：返回当前上下文可用的学习计划列表。
-  7. `create_learning_plan(graph_id, topic_id=None)`：基于选定图谱创建学习计划并返回 `plan_id`；可选 `topic_id` 用于限定初始学习范围。
-  8. `extend_learning_plan_topics(plan_id, topic_ids, reason=None)`：按学习进展向既有计划增量加入主题范围，返回新增结果与范围摘要。
-  9. `get_learn_context(plan_id, topic_id=None)`：内部调用 `learning.get_learning_context(...)` 拉取结构化上下文，并经 `prompt_templates` 封装后返回学习提示词文本；可选 `topic_id` 用于聚焦当前学习主题。
-  10. `get_quiz_context(plan_id, topic_id=None, session_context=None)`：内部调用 `learning.get_quiz_context(...)` 拉取结构化上下文，合并 `quiz_pacing`/`next_session_context` 后经 `prompt_templates` 封装返回测验提示词；可选 `topic_id` 限定范围，可选 `session_context` 续跑批量测验。
-  11. `get_review_context(plan_id, topic_id=None, session_context=None)`：内部调用 `learning.get_review_context(...)` 拉取结构化上下文，结合 `session_context` 计算 `session_queue`（当前题/下一题/已服务概念），并经 `prompt_templates` 封装后返回复习提示词文本。
-  12. `add_interaction_record(plan_id, mode, record_payload)`：写入学习记录并返回提交结果。
-- **边界**：
-  - 仅通过 L4 模块 API 访问业务数据，不直接操作存储。
-  - 不直接承担模型推理调用；模型调用由 AI Agent 或上层执行环境负责。
-  - 不承载 AI 学习流程控制逻辑；仅提供结构化数据编排、提示词文本封装与记录能力。
-  - 保持读写职责分离：计划范围变更使用 `extend_learning_plan_topics`，提示词读取由 `get_*_prompt` 承担（内部仍调用 `learning.get_*_context`）。
-  - 护栏与输出校验逻辑先内聚在 `orchestration_app_service.py`，复杂度上升后再拆分。
+### 9.3 自动化测试
 
-### 4.4 业务模块（L4，module-first）
+- [x] 单元/集成：`pytest` 全量（`tests/knowledge_graph`、`tests/learning`、`tests/orchestration`、`tests/integration`）
+- [x] 契约：`tests/contracts/test_methodology_contracts.py`、`test_docs_terminology.py`、`test_cli_docs_sync.py`
+- [x] 黑盒提示词验收：`tests/prompt-validation/`（方法论基线见本文 §1.4）
 
-- **模块设计原则**：
-  - 仅提供业务能力，不承担提示词拼装与模型推理。
-  - 对外统一返回结构化数据（JSON 风格对象），由 L3 的 `prompt_templates` 进行文本封装。
-  - 模块间通过显式 API 协作（`learning` 可调用 `knowledge_graph`），避免隐式耦合。
-  - 返回粒度默认采用 **Concept 级 + Summary**，仅在必要时按需下钻到 Evidence 级，避免一次性上下文过重影响大模型分析。
-- **统一返回粒度约束（适用于全部方法）**：
-  - **默认返回**：`core + summary`（完成本轮决策所需最小字段）。
-  - **按需扩展**：`detail`（仅在用户追问依据、或 Agent 明确请求时返回）。
-  - **分页与限流**：集合结果必须支持 `limit/offset`；默认限制 `concepts` 数量，返回 `has_more`。
-- **`knowledge_graph` 模块（对应 3.1，支撑 3.2～3.5）必须提供的方法**：
-  1. `list_knowledge_graphs()`
-  - 默认返回：`graph_id`、`name`、`revision`、`status`、`topic_count`、`concept_count`、`updated_at`。
-  - 按需扩展：无。
-  - 不建议返回：图谱内 `concept/evidence` 明细。
-  2. `get_knowledge_graph(graph_id, topic_id=None, concept_limit=20, offset=None)`
-  - 默认返回：`topics`、`topic_concepts`、`concept_briefs`（`concept_id`、`canonical_name`、`short_definition`、`difficulty`）。
-  - 按需扩展：`detail.concepts`（完整定义、更多属性）。
-  - 不建议返回：Evidence 原文列表（除非明确请求）。
-  3. `ingest_knowledge_graph(graph_id, structured_payload)`
-  - 默认返回：`graph_id`、`version`、`change_summary`、`validation_summary`。
-  - 按需扩展：`detail.failed_items`（校验失败明细）。
-  - 不建议返回：全量写入后的图谱快照。
-  4. `get_concepts(graph_id, concept_scope, detail='brief', concept_limit=20, offset=None)`
-  - 默认返回：`concept_briefs`（`concept_id`、`canonical_name`、`short_definition`、`difficulty`）。
-  - 按需扩展：`detail.concepts`（完整定义、更多属性）。
-  - 不建议返回：无 scope 限制的全量概念集合。
-  5. `get_concept_relations(graph_id, concept_scope, depth=1, relation_limit=50)`
-  - 默认返回：`relation_briefs`（`from_concept_id`、`to_concept_id`、`relation_type`、`strength`）。
-  - 按需扩展：`detail.relations`（方向、权重、版本状态等）。
-  - 不建议返回：多跳深层关系全量展开。
-  6. `get_concept_evidence(graph_id, concept_scope, mode='summary', evidence_limit=20)`
-  - 默认返回：`evidence_summary`（每 concept 1~2 条摘要与来源标识）。
-  - 按需扩展：`detail.evidence`（原文片段与定位信息）。
-  - 不建议返回：全量 Evidence 原文（默认禁止）。
-- **`learning` 模块（对应 3.2～3.5）必须提供的方法**：
-  1. `list_learning_plans()`
-  - 默认返回：`plan_id`、`graph_id`、`progress`、`status`、`focus_topics`、`updated_at`。
-  - 按需扩展：`summary.goal_snapshot`。
-  - 不建议返回：计划下全量记录与任务明细。
-  2. `create_learning_plan(graph_id, topic_id=None)`
-  - 默认返回：`plan_id`、`graph_id`、`initial_scope_summary`。
-  - 按需扩展：`detail.bootstrap_tasks`（初始化任务摘要）。
-  - 不建议返回：完整任务队列。
-  3. `extend_learning_plan_topics(plan_id, topic_ids, reason=None)`
-  - 默认返回：`plan_id`、`added_topics`、`skipped_topics`、`new_scope_summary`。
-  - 按需扩展：`detail.rejected_topics`（不可加入主题的原因）。
-  - 不建议返回：更新后的全量任务/状态快照。
-  4. `get_learning_context(plan_id, topic_id=None)`
-  - 默认返回：`goal_summary`、`state_summary`、`task_summary`、`concept_scope`、`concept_pack_brief`。
-  - 按需扩展：`detail.concept_pack`（更完整 Concept 信息）。
-  - 不建议返回：Evidence full（默认不返回）。
-  5. `get_quiz_context(plan_id, topic_id=None, session_context=None)`
-  - 默认返回：`quiz_scope`、`history_performance_summary`、`difficulty_hint`、`constraints`、`quiz_pacing`、`suggested_batch_size`、`next_session_context`。
-  - 入参 `session_context`：`quiz_pacing`、`batch_size`、`pending_items`、`served_concept_ids`。
-  - 按需扩展：`detail.concept_pack_brief`（仅出题必要概念材料）。
-  - 不建议返回：与出题无关的长文本上下文。
-  6. `get_review_context(plan_id, topic_id=None)`
-  - 默认返回：`due_items`、`forgetting_risk_summary`、`priority_reasons`、`candidate_items`、`review_score_factors`、`queue_policy`、`scope`、`constraints`。
-  - 按需扩展：`detail.concept_refresh_brief`。
-  - 不建议返回：全量历史记录流。
-  7. `add_interaction_record(plan_id, mode, record_payload)`
-  - 默认返回：`commit_result`、`state_delta_summary`、`task_delta_summary`。
-  - 按需扩展：`detail.updated_tasks`（必要时）。
-  - 不建议返回：更新后的全量 `LearnerConceptState/LearningTask`。
-- **模块协作关系（对齐 3.2～3.5）**：
-  - `learning.extend_learning_plan_topics(...)` 负责计划范围变更；成功后由 Agent 再调用 `get_*_prompt(...)` 获取新范围提示词。
-  - `learning.get_*_context(...)` 内部按 `graph_id + concept_scope` 调用 `knowledge_graph.get_concepts/get_concept_relations/get_concept_evidence(mode='summary')` 组装场景化上下文。
-  - `orchestration_app_service` 只调用上述模块方法并汇总结果，不下沉到模块内部存储细节。
+### 9.4 术语
 
-### 4.5 基础技术支撑（L5）
-
-- **DB 适配**：采用 **SQLite** 进行持久化；由 `scripts/foundation/storage.py` 统一封装存取，库文件默认落在用户目录 `~/.alavten/data/knowledge/knowledge_v1.sqlite3`（macOS/Linux 与 Windows 均通过 `Path.home()` 解析）。测试或自定义部署可用环境变量 `DOC_SOCRATIC_DB_PATH` 覆盖。
-- **日志记录**：记录关键流程节点与错误上下文，支持问题定位与最小化运行追踪。
+- [x] 运行时文档 snake_case API 字段；ER 图保留 camelCase 列名
+- [x] 四主模式命名一致：`ingest / learn / quiz / review`

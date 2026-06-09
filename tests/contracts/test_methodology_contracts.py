@@ -9,25 +9,43 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+FIVE_SECTION_HEADERS = (
+    "## 适用场景",
+    "## 前置输入",
+    "## 执行步骤",
+    "## 停止条件",
+    "## 下一步调整",
+)
+
+LEGACY_SECTIONS = (
+    "## AI Execution Directives",
+    "## Turn Contract",
+    "## Escalation Rule",
+    "## Mode Exit Rule",
+    "## Evidence Rule",
+    "## Queue Policy",
+    "## Runtime Execution Chain",
+    "## Trigger Conditions",
+)
+
+
 def test_skill_contains_thin_methodology_sections():
     content = _read(_root() / "SKILL.md")
     assert ("## Session Contract" in content) or ("## Session Guardrails" in content)
     assert ("## Global Guardrails" in content) or ("Keep this file thin:" in content)
     assert "## Intent Matrix" in content
-    # keep thin guide principle in place
     assert ("do not duplicate here" in content) or ("mode-specific fields/steps live only" in content)
 
 
-def test_modes_define_experience_contract_sections():
+def test_mode_files_use_five_section_template():
     root = _root() / "references"
-    mode_files = ["ingest.md", "learn.md", "quiz.md", "review.md"]
+    mode_files = ["ingest.md", "learn.md", "quiz.md", "review.md", "shared.md"]
     for name in mode_files:
         content = _read(root / name)
-        assert "## AI Execution Directives" in content
-        assert "## Turn Contract" in content
-        assert "## Escalation Rule" in content
-        assert "## Mode Exit Rule" in content
-        assert "## Evidence Rule" in content
+        for header in FIVE_SECTION_HEADERS:
+            assert header in content, f"{name} missing {header}"
+        for legacy in LEGACY_SECTIONS:
+            assert legacy not in content, f"{name} still contains legacy section {legacy}"
 
 
 def test_modes_output_contract_has_summary_and_next_step():
@@ -39,18 +57,29 @@ def test_modes_output_contract_has_summary_and_next_step():
         assert "next_step" in content
 
 
-def test_shared_and_learn_require_discovery_snapshot_and_dual_tables():
-    root = _root() / "references"
-    shared = _read(root / "shared.md")
-    learn = _read(root / "learn.md")
+def test_shared_has_mode_selection_table():
+    shared = _read(_root() / "references" / "shared.md")
+    assert "| Mode |" in shared
+    assert "ingest.md" in shared
+    assert "learn.md" in shared
+    assert "quiz.md" in shared
+    assert "review.md" in shared
 
-    assert "discovery_snapshot" in shared
-    assert "knowledge_graphs_table" in shared
-    assert "pending_learning_plans_table" in shared
-    assert "choose **plan** or **graph** first" in shared
 
-    assert "route to `shared`" in learn
-    assert "discovery tables" in learn.lower()
+def test_learn_routes_to_shared_when_plan_missing():
+    learn = _read(_root() / "references" / "learn.md")
+    assert "shared" in learn
+    assert "plan_id" in learn
+
+
+def test_reorder_topics_file_removed():
+    assert not (_root() / "references" / "reorder-topics.md").exists()
+
+
+def test_skill_intent_matrix_routes_reorder_to_ingest():
+    content = _read(_root() / "SKILL.md")
+    assert "references/ingest.md" in content
+    assert "reorder-topics.md" not in content
 
 
 def test_skill_requires_interaction_record_and_has_no_global_write_gate():
@@ -63,26 +92,7 @@ def test_skill_requires_interaction_record_and_has_no_global_write_gate():
     assert "until the previous record write succeeds or recovery is surfaced" in content
 
 
-def test_modes_require_per_turn_record_write_and_no_progress_on_write_failure():
-    root = _root() / "references"
-    learn = _read(root / "learn.md")
-    quiz = _read(root / "quiz.md")
-    review = _read(root / "review.md")
-
-    assert "pending taught concept record or judged answer record" in learn
-    assert "MUST: after each concept is taught, write record immediately" in learn
-    assert "MUST: after each concept check answer is received and judged, write record immediately" in learn
-    assert "Multiple records for the same `concept_id` are valid append-only learning events" in learn
-    assert "do not advance to next concept/question/mode handoff" in learn
-
-    assert "Reconcile" in quiz
-    assert "quiz_pacing" in quiz
-    assert "per_chapter" in quiz
-    assert "record_summary" in quiz
-    assert "MUST: after each learner answer is judged, write record immediately" in quiz
-    assert "before emitting the next question in the same turn or handing off modes" in quiz
-    assert "no next question or mode handoff in same turn" in quiz
-
-    assert "MUST: after each learner answer is judged, write record immediately before queue advance" in review
-    assert "or mode handoff" in review
-    assert "only after successful record write" in review
+def test_ingest_includes_reorder_subflow():
+    ingest = _read(_root() / "references" / "ingest.md")
+    assert "reorder-graph-topics" in ingest
+    assert "书序修正" in ingest

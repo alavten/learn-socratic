@@ -24,8 +24,7 @@ Applies to every session regardless of mode.
 - Follow exactly one active mode contract (`shared`/`ingest`/`learn`/`quiz`/`review`) per turn; never mix per-mode rules.
 - Keep this file thin: mode-specific fields/steps live only in reference contract files (`references/*.md`).
 - Do not use memory-only fallback as primary evidence; run required API discovery first.
-- **Books and large documents**: use one stable `graph_id` for the whole book; ingest **one chapter per turn** into that same graph (chapters as `topics` with `topic_type: chapter`, sections under `parent_topic_id`). Do not split a single book into parallel root graphs or try to build the full book payload in one shot. See `references/ingest.md` (“书籍与大文档导入”).
-- Legacy multi-`graph_id` + `parent_graph_id` is only when the user explicitly wants isolated chapter graphs (see `references/ingest.md` “书系拆章（遗留）”).
+- **Books and large documents**: use one stable `graph_id` for the whole book; ingest **one chapter per turn** into that same graph (chapters as `topics` with `topic_type: chapter`, sections under `parent_topic_id`). Do not split a single book into parallel root graphs or try to build the full book payload in one shot. Chapter reorder uses `reorder-graph-topics` inside `references/ingest.md`.
 - **Learning telemetry is mandatory** for `learn` / `quiz` / `review`.
 - **Quiz storage granularity** is always one `add_interaction_record` per judged question, regardless of `quiz_pacing` (`per_concept` vs `per_chapter`); pacing only changes how many questions appear in one user turn.
 - After each taught concept or judged learner answer, immediately call `add_interaction_record` with `concept_id` and outcome payload.
@@ -40,7 +39,7 @@ Map natural language intent to target mode and reference contract file:
 | User intent hint                            | Target mode | Contract file          |
 | ------------------------------------------- | ----------- | ----------------- |
 | import materials, build graph, update graph | `ingest`    | `references/ingest.md` |
-| fix chapter order, reorder topics, 章节顺序 | `ingest` or dedicated reorder flow | `references/reorder-topics.md` |
+| fix chapter order, reorder topics, 章节顺序 | `ingest` | `references/ingest.md` |
 | explain, teach me, learn                    | `learn`     | `references/learn.md`  |
 | test me, quiz, ask questions, 一题一题, 批量测验, 一章测验 | `quiz`      | `references/quiz.md`   |
 | review, recap, due items                    | `review`    | `references/review.md` |
@@ -106,6 +105,10 @@ Run commands from the skill repo root (the directory that contains `scripts/`), 
 - `scripts.knowledge_graph.api.get_concepts` is a **Python module** helper, not a method on `OrchestrationAppService` and not exposed as a subcommand.
 - Some orchestration APIs (e.g. `get_discovery_context`) have **no** dedicated CLI; call them via `from scripts.app import create_app` in Python (or `call_api` if you use it).
 
-Example:
+Examples:
 
 `python -m scripts.cli.main get-mode-context --mode learn --plan-id PLAN_ID --topic-id t1`
+
+`python -m scripts.cli.main get-mode-context --mode learn --plan-id PLAN_ID --session-context-json '{"served_concept_ids":["c1"],"last_completed_concept_id":"c1","last_result":"ok"}'`
+
+On learn re-entry, always call `get-mode-context --mode learn` with the prior turn's `next_session_context` (or rely on server DB fallback). Teach only `session_queue.current_item.concept_id`.

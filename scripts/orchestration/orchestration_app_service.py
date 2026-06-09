@@ -11,6 +11,11 @@ from scripts.foundation.logger import get_logger, log_event
 from scripts.foundation.storage import run_migrations
 from scripts.knowledge_graph import api as kg_api
 from scripts.knowledge_graph.store import collect_topic_ids_with_descendants
+from scripts.orchestration.session_state import (
+    prepare_learn_session_state,
+    prepare_quiz_session_state,
+    prepare_review_session_state,
+)
 from scripts.learning import api as learning_api
 from scripts.orchestration.prompt_templates import build_prompt
 
@@ -468,13 +473,34 @@ API_SPECS: dict[str, dict[str, Any]] = {
             "properties": {
                 "plan_id": {"type": "string", "minLength": 1},
                 "topic_id": {"type": "string"},
+                "session_context": {
+                    "type": "object",
+                    "description": (
+                        "Optional learn session state: served_concept_ids, "
+                        "last_completed_concept_id, last_result, depth_level"
+                    ),
+                },
             },
             "additionalProperties": False,
         },
         "summary": "Build learning prompt from context",
         "tags": ["learning", "prompt"],
         "stability": "stable",
-        "examples": {"valid_payloads": [{"plan_id": "plan-1"}, {"plan_id": "plan-1", "topic_id": "t1"}]},
+        "examples": {
+            "valid_payloads": [
+                {"plan_id": "plan-1"},
+                {"plan_id": "plan-1", "topic_id": "t1"},
+                {
+                    "plan_id": "plan-1",
+                    "topic_id": "t1",
+                    "session_context": {
+                        "served_concept_ids": ["c1"],
+                        "last_completed_concept_id": "c1",
+                        "last_result": "ok",
+                    },
+                },
+            ]
+        },
     },
     "get_quiz_context": {
         "input_schema": {
@@ -487,6 +513,7 @@ API_SPECS: dict[str, dict[str, Any]] = {
                     "type": "object",
                     "description": (
                         "Optional quiz session state: quiz_pacing (per_concept|per_chapter), "
+                        "pacing_hint (natural language, e.g. 一题一题/批量/一章测验), "
                         "batch_size, pending_items, served_concept_ids"
                     ),
                 },
@@ -688,109 +715,6 @@ def _validate_payload(api_name: str, payload: dict[str, Any]) -> None:
 
 def _compact_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in payload.items() if value is not None}
-
-
-def _is_incorrect_result(result: Any) -> bool:
-    return str(result or "").lower() in {"wrong", "incorrect", "fail", "blocked"}
-
-
-QUIZ_PACINGS = frozenset({"per_concept", "per_chapter"})
-
-
-def _prepare_quiz_session_state(
-    context: dict[str, Any],
-    session_context: dict[str, Any] | None,
-) -> dict[str, Any]:
-    incoming = dict(session_context or {})
-    constraints = context.get("constraints") or {}
-    max_question_count = int(constraints.get("max_question_count") or 10)
-    pacing = str(incoming.get("quiz_pacing") or "per_concept").strip()
-    if pacing not in QUIZ_PACINGS:
-        pacing = "per_concept"
-
-    concept_pack = (context.get("detail") or {}).get("concept_pack_brief") or {}
-    concepts = concept_pack.get("concepts") or []
-    concept_count = len(concepts)
-
-    raw_batch = incoming.get("batch_size")
-    if raw_batch is not None:
-        try:
-            suggested_batch_size = max(1, min(int(raw_batch), max_question_count))
-        except (TypeError, ValueError):
-            suggested_batch_size = 1
-    elif pacing == "per_chapter":
-        suggested_batch_size = min(max(concept_count, 1), max_question_count) if concept_count else min(5, max_question_count)
-    else:
-        suggested_batch_size = 1
-
-    pending_items = list(incoming.get("pending_items") or [])
-    served_concept_ids = list(incoming.get("served_concept_ids") or [])
-
-    next_session_context = {
-        "quiz_pacing": pacing,
-        "batch_size": suggested_batch_size,
-        "pending_items": pending_items,
-        "served_concept_ids": served_concept_ids,
-    }
-
-    return {
-        "quiz_pacing": pacing,
-        "suggested_batch_size": suggested_batch_size,
-        "pending_items": pending_items,
-        "served_concept_ids": served_concept_ids,
-        "next_session_context": next_session_context,
-    }
-
-
-def _prepare_review_session_state(
-    context: dict[str, Any],
-    session_context: dict[str, Any] | None,
-) -> dict[str, Any]:
-    incoming = dict(session_context or {})
-    served = set(incoming.get("served_concept_ids") or [])
-    if not incoming.get("served_concept_ids"):
-        # Server-side fallback: avoid immediately repeating the most recent reviewed concept
-        # when caller does not persist/return session_context.
-        recent_review_concepts = context.get("recent_review_concepts") or []
-        if recent_review_concepts:
-            served.add(recent_review_concepts[0])
-    retry_state = dict(incoming.get("retry_state") or {})
-    last_completed = incoming.get("last_completed_concept_id")
-    last_result = incoming.get("last_result")
-
-    if last_completed:
-        if _is_incorrect_result(last_result):
-            retries = int(retry_state.get(last_completed, 0))
-            if retries < 1:
-                retry_state[last_completed] = retries + 1
-            else:
-                served.add(last_completed)
-                retry_state.pop(last_completed, None)
-        else:
-            served.add(last_completed)
-            retry_state.pop(last_completed, None)
-
-    candidate_items = context.get("candidate_items") or context.get("due_items") or []
-    queue_items: list[dict[str, Any]] = []
-    for item in candidate_items:
-        concept_id = item.get("concept_id")
-        if not concept_id:
-            continue
-        if concept_id in served and retry_state.get(concept_id, 0) == 0:
-            continue
-        queue_items.append(item)
-
-    return {
-        "queue_snapshot": queue_items[:20],
-        "current_item": queue_items[0] if queue_items else None,
-        "next_item": queue_items[1] if len(queue_items) > 1 else None,
-        "served_concept_ids": sorted(served),
-        "next_session_context": {
-            "served_concept_ids": sorted(served),
-            "retry_state": retry_state,
-            "queue_length": len(queue_items),
-        },
-    }
 
 
 def _format_markdown_table(headers: list[str], rows: list[list[Any]]) -> str:
@@ -1082,9 +1006,34 @@ class OrchestrationAppService:
         )
         return learning_api.extend_learning_plan_topics(plan_id=plan_id, topic_ids=topic_ids, reason=reason)
 
-    def get_learn_context(self, plan_id: str, topic_id: str | None = None) -> dict[str, Any]:
-        _validate_payload("get_learn_context", _compact_payload({"plan_id": plan_id, "topic_id": topic_id}))
-        context = learning_api.get_learning_context(plan_id=plan_id, topic_id=topic_id)
+    def get_learn_context(
+        self,
+        plan_id: str,
+        topic_id: str | None = None,
+        session_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        _validate_payload(
+            "get_learn_context",
+            _compact_payload(
+                {
+                    "plan_id": plan_id,
+                    "topic_id": topic_id,
+                    "session_context": session_context,
+                }
+            ),
+        )
+        context = learning_api.get_learn_context_data(plan_id=plan_id, topic_id=topic_id)
+        if context.get("error"):
+            return {"prompt_text": "", "context_summary": context}
+        session_state = prepare_learn_session_state(context, session_context)
+        context = {
+            **context,
+            "session_queue": session_state["session_queue"],
+            "chapter_progress": session_state["chapter_progress"],
+            "suggested_plan_action": session_state["suggested_plan_action"],
+            "next_session_context": session_state["next_session_context"],
+            "depth_level": session_state["depth_level"],
+        }
         return {"prompt_text": build_prompt("learn", context), "context_summary": context}
 
     def get_quiz_context(
@@ -1104,7 +1053,7 @@ class OrchestrationAppService:
             ),
         )
         context = learning_api.get_quiz_context(plan_id=plan_id, topic_id=topic_id)
-        session_state = _prepare_quiz_session_state(context, session_context)
+        session_state = prepare_quiz_session_state(context, session_context)
         context = {**context, **session_state}
         return {"prompt_text": build_prompt("quiz", context), "context_summary": context}
 
@@ -1125,7 +1074,7 @@ class OrchestrationAppService:
             ),
         )
         context = learning_api.get_review_context(plan_id=plan_id, topic_id=topic_id)
-        session_state = _prepare_review_session_state(context, session_context)
+        session_state = prepare_review_session_state(context, session_context)
         context = {
             **context,
             "session_queue": {
